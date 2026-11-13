@@ -577,17 +577,16 @@ function renderCalendarChart() {
     },
     grid: {
       top: 15,
-      bottom: 65,
+      bottom: 48,
       left: 50,
       right: 20
     },
     xAxis: {
       type: "category",
       data: MONTH_NAMES,
-      position: "bottom",
       splitArea: { show: false },
       axisLine: { lineStyle: { color: "#e2e8f0" } },
-      axisLabel: { color: "#475569", fontSize: 11, fontFamily: "Sora", margin: 8 },
+      axisLabel: { color: "#475569", fontSize: 11, fontFamily: "Sora" },
       axisTick: { show: false }
     },
     yAxis: {
@@ -604,11 +603,9 @@ function renderCalendarChart() {
       calculable: true,
       orient: "horizontal",
       left: "center",
-      bottom: 2,
-      itemHeight: 10,
-      itemWidth: 160,
+      bottom: 0,
       inRange: { color: ramp },
-      textStyle: { color: "#64748b", fontSize: 9.5, fontFamily: "Sora" }
+      textStyle: { color: "#64748b", fontSize: 10, fontFamily: "Sora" }
     },
     series: [
       {
