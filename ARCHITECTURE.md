@@ -69,12 +69,12 @@ Dos bloques desacoplados que se comunican **únicamente mediante archivos estát
      - Calibrar en **2017–2021** (sin ago–sep 2020) → evaluar en **2012–2016**.
    - **Criterio de éxito fijado de antemano:** error relativo del total acumulado en el bloque de validación **$\le \pm 15\%$** y reducción de al menos **80 %** del sesgo crudo entre sensores.
    - **Factor final de producción:** una vez superada la validación cruzada, los factores $k_m$ definitivos se calculan con todos los años válidos de **2012–2021**.
-   - **Validación espacial (subregiones):** evaluar el error con esos factores en 3 subregiones de Bolivia (Llanos/Chiquitanía: `lon > -64, lat > -19`; Amazonía/Beni Norte: `lat >= -14`; Andina/Valles: `lon <= -64`) y reportarlo en `metadata.json` y `docs/METODO.md`.
+   - **Validación espacial (subregiones):** evaluar el error con esos factores en 3 subregiones mutuamente excluyentes y colectivamente exhaustivas de Bolivia (Amazonía/Beni Norte: `lat >= -14.0`; Andina/Valles: `lon <= -64.0` y `lat < -14.0`; Chiquitanía/Llanos: `lon > -64.0` y `lat < -14.0`) y reportarlo en `metadata.json` y `docs/METODO.md`.
 5. **Construir la serie armonizada (`count_harmonized`):**
    - **2003-01 a 2021-12** (excepto 2020-08 y 2020-09): `count_harmonized = count_raw_aqua` (`source = "aqua"`).
-   - **2020-08 y 2020-09** (apagón de Aqua): `count_harmonized = round(count_raw_snpp * k_m, 1)` (`source = "snpp_converted"`).
-   - **2022-01 a 2025-12** (era de deriva orbital de Aqua): `count_harmonized = round(count_raw_snpp * k_m, 1)` (`source = "snpp_converted"`).
-   - **2026-01 a 2026-10** (si hay datos 2026): `count_harmonized = round(count_raw_snpp * k_m, 1)` (`source = "snpp_converted_nrt"` si provienen de NRT, o `"snpp_converted"` si son estándar).
+   - **2020-08 y 2020-09** (apagón de Aqua): `count_harmonized = round(count_raw_snpp * k_m, 4)` (`source = "snpp_converted"`).
+   - **2022-01 a 2025-12** (era de deriva orbital de Aqua): `count_harmonized = round(count_raw_snpp * k_m, 4)` (`source = "snpp_converted"`).
+   - **2026-01 a 2026-10** (si hay datos 2026): `count_harmonized = round(count_raw_snpp * k_m, 4)` (`source = "snpp_converted_nrt"` si provienen de NRT, o `"snpp_converted"` si son estándar).
 
 ## 3. Bloque B — Aplicación web
 

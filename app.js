@@ -308,7 +308,17 @@ function recomputeAoiSelection() {
   });
 
   const count = state.selectedCells.size;
-  const approxKm2 = Math.round(count * 27.5 * 27.5).toLocaleString("es-BO");
+  const cellSize = state.meta ? state.meta.cell_size_deg : 0.25;
+  const dLatKm = 110.67 * cellSize;
+  const dLonEqKm = 111.32 * cellSize;
+  let totalAreaKm2 = 0;
+  state.selectedCells.forEach((cellId) => {
+    const c = state.cellsMeta.get(cellId);
+    if (c) {
+      totalAreaKm2 += dLatKm * dLonEqKm * Math.cos((c.lat * Math.PI) / 180.0);
+    }
+  });
+  const approxKm2 = Math.round(totalAreaKm2).toLocaleString("es-BO");
   const badgeEl = document.getElementById("aoiStatsBadge");
   if (badgeEl) badgeEl.textContent = `${count} celdas activas · ~${approxKm2} km²`;
 
@@ -430,6 +440,7 @@ function computeHistoricalStatsByMonth() {
 function updateAllViews() {
   const histStats = computeHistoricalStatsByMonth();
   updateTelemetryCard(histStats);
+  populateScienceRailFromMeta();
   renderCalendarChart();
 }
 
@@ -467,7 +478,11 @@ function updateTelemetryCard(histStats) {
   if (meanEl) meanEl.textContent = mStat.mean.toLocaleString("es-BO", { maximumFractionDigits: 1 });
 
   const iqrEl = document.getElementById("kpiIqrVal");
-  if (iqrEl) iqrEl.textContent = `${mStat.p25.toFixed(0)} – ${mStat.p75.toFixed(0)}`;
+  if (iqrEl) {
+    const p25Fmt = mStat.p25.toLocaleString("es-BO", { maximumFractionDigits: 1 });
+    const p75Fmt = mStat.p75.toLocaleString("es-BO", { maximumFractionDigits: 1 });
+    iqrEl.textContent = `${p25Fmt} – ${p75Fmt}`;
+  }
 
   const diff = currVal - mStat.median;
   const anomEl = document.getElementById("kpiAnomalyVal");
@@ -526,18 +541,69 @@ function updateTelemetryCard(histStats) {
 
 function populateScienceRailFromMeta() {
   if (!state.meta) return;
-  const m1 = state.meta.validation_metrics?.train_2012_2016_test_2017_2021;
-  if (m1) {
+
+  const subMap = {
+    chiquitania: "chiquitania_llanos",
+    amazonia: "amazonia_beni_norte",
+    andina: "andina_valles"
+  };
+
+  let metrics = null;
+  if (state.preset === "all") {
+    metrics = state.meta.validation_metrics?.train_2012_2016_test_2017_2021;
+  } else if (subMap[state.preset]) {
+    metrics = state.meta.validation_metrics?.subregions_2012_2021?.[subMap[state.preset]];
+  } else if (state.preset === "custom") {
+    let sumAqua = 0;
+    let sumSnppRaw = 0;
+    let sumSnppHarm = 0;
+    const factors = state.meta.factors_by_month || {};
+    state.selectedCells.forEach((cellId) => {
+      const cell = state.cellsMeta.get(cellId);
+      if (!cell) return;
+      for (const r of cell.records) {
+        if (r.year < 2012 || r.year > 2021) continue;
+        if (r.year === 2012 && r.month === 1) continue;
+        if (r.year === 2020 && (r.month === 8 || r.month === 9)) continue;
+        const a = r.aqua || 0;
+        const s = r.snpp || 0;
+        const k = Number(factors[String(r.month)] || state.meta.factor_annual_fallback || 0.3514);
+        sumAqua += a;
+        sumSnppRaw += s;
+        sumSnppHarm += s * k;
+      }
+    });
+    if (sumAqua > 0) {
+      metrics = {
+        aqua_total: Math.round(sumAqua * 10) / 10,
+        snpp_raw_total: Math.round(sumSnppRaw * 10) / 10,
+        snpp_harmonized_total: Math.round(sumSnppHarm * 10) / 10,
+        raw_bias_pct: Math.round(((sumSnppRaw - sumAqua) / sumAqua) * 10000) / 100,
+        harmonized_bias_pct: Math.round(((sumSnppHarm - sumAqua) / sumAqua) * 10000) / 100
+      };
+    }
+  }
+
+  if (!metrics) {
+    metrics = state.meta.validation_metrics?.train_2012_2016_test_2017_2021;
+  }
+
+  if (metrics) {
+    const rawNumEl = document.getElementById("valSplit1RawNum");
     const biasEl = document.getElementById("valSplit1Bias");
     const aquaEl = document.getElementById("valSplit1Aqua");
     const harmEl = document.getElementById("valSplit1Harm");
     const rawEl = document.getElementById("valSplit1Raw");
 
-    if (biasEl) biasEl.textContent = `${m1.harmonized_bias_pct} % sesgo`;
-    if (aquaEl) aquaEl.textContent = m1.aqua_total.toLocaleString("es-BO");
-    if (harmEl) harmEl.textContent = m1.snpp_harmonized_total.toLocaleString("es-BO");
+    const rawSign = metrics.raw_bias_pct >= 0 ? "+" : "";
+    const harmSign = metrics.harmonized_bias_pct > 0 ? "+" : "";
+
+    if (rawNumEl) rawNumEl.textContent = `${rawSign}${metrics.raw_bias_pct.toFixed(1).replace(".", ",")} %`;
+    if (biasEl) biasEl.textContent = `${harmSign}${metrics.harmonized_bias_pct.toFixed(2).replace(".", ",")} % sesgo`;
+    if (aquaEl) aquaEl.textContent = metrics.aqua_total.toLocaleString("es-BO");
+    if (harmEl) harmEl.textContent = metrics.snpp_harmonized_total.toLocaleString("es-BO", { maximumFractionDigits: 1 });
     if (rawEl) {
-      rawEl.textContent = `Salto bruto eliminado: +${m1.raw_bias_pct.toFixed(1)} % → ${m1.harmonized_bias_pct} %`;
+      rawEl.textContent = `Salto bruto eliminado: ${rawSign}${metrics.raw_bias_pct.toFixed(1)} % → ${harmSign}${metrics.harmonized_bias_pct} %`;
     }
   }
 }
@@ -712,7 +778,21 @@ function triggerCsvDownload(filename, csvContent) {
 }
 
 function downloadAoiSeriesCsv() {
-  const rows = [["year", "month", "count_harmonized_aqua_eq", "source", "aoi_preset", "selected_cells"]];
+  const histStats = computeHistoricalStatsByMonth();
+  const rows = [[
+    "year",
+    "month",
+    "count_harmonized_aqua_eq",
+    "count_raw_aqua",
+    "count_raw_snpp",
+    "historical_median_2003_2025",
+    "historical_p25",
+    "historical_p75",
+    "anomaly_pct_vs_median",
+    "source",
+    "aoi_preset",
+    "selected_cells"
+  ]];
   const count = state.selectedCells.size;
 
   state.currentSeriesByYm.forEach((val, ym) => {
@@ -721,11 +801,29 @@ function downloadAoiSeriesCsv() {
     const m = parseInt(mStr, 10);
     if (y < state.yearStart || y > state.yearEnd) return;
 
+    const mStat = histStats[m] || { median: 0, p25: 0, p75: 0 };
+    const anomPct = mStat.median > 0
+      ? (((val.harm - mStat.median) / mStat.median) * 100.0).toFixed(2)
+      : "";
+
     let src = "modis_aqua";
     if (y === 2020 && (m === 8 || m === 9)) src = "snpp_harmonized_outage";
     else if (y >= 2022) src = val.hasNrt ? "snpp_harmonized_nrt" : "snpp_harmonized";
 
-    rows.push([y, m, val.harm.toFixed(2), src, state.preset, count]);
+    rows.push([
+      y,
+      m,
+      val.harm.toFixed(2),
+      val.aqua !== null ? val.aqua : "",
+      val.snpp !== null ? val.snpp : "",
+      mStat.median.toFixed(2),
+      mStat.p25.toFixed(2),
+      mStat.p75.toFixed(2),
+      anomPct,
+      src,
+      state.preset,
+      count
+    ]);
   });
 
   const csv = rows.map((r) => r.join(",")).join("\n");

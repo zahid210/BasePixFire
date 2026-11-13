@@ -394,8 +394,8 @@ def main() -> None:
         "calibration_period": ["2012-02", "2021-12"],
         "excluded_months": ["2012-01", "2020-08", "2020-09"],
         "harmonized_source_switch": "2022-01",
-        "factors_by_month": {str(m): round(final_factors[m], 4) for m in range(1, 13)},
-        "factor_annual_fallback": round(annual_fallback, 4),
+        "factors_by_month": {str(m): round(final_factors[m], 6) for m in range(1, 13)},
+        "factor_annual_fallback": round(annual_fallback, 6),
         "validation_metrics": {
             "threshold_pct": 15.0,
             "train_2012_2016_test_2017_2021": eval_a_on_b,

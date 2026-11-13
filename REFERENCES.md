@@ -70,5 +70,5 @@ Todo el software de terceros utilizado en la aplicación web y en el pipeline cu
 | **Turf.js** (`@turf/turf`) | v6.5.0 (https://turfjs.org/) | MIT License (OSI-approved) | Cálculo geométrico en navegador (`booleanPointInPolygon`, `bbox`, `bboxPolygon`) |
 | **Apache ECharts** | v5.5.0 (https://echarts.apache.org/) | Apache License 2.0 (OSI-approved) | Visualización del Calendario de Actividad (heatmap), perfil estacional con banda P25–P75 y curvas de validación |
 | **Datos Geográficos de OpenStreetMap** | https://www.openstreetmap.org/copyright | Open Database License (ODbL) | Cartografía base debajo de las teselas del mapa |
-| **CARTO Basemaps** (*Dark Matter* & *Voyager*) | https://carto.com/basemaps | Free Non-Commercial Tier (con atribución a CARTO y OpenStreetMap) | Teselas de fondo oscuro y claro en el visor geoespacial |
+| **CARTO Basemaps** (*Positron* & *Voyager*) | https://carto.com/basemaps | Free Non-Commercial Tier (con atribución a CARTO y OpenStreetMap) | Teselas de fondo claro y topográfico en el visor geoespacial |
 | **Esri World Imagery** | https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9 | Esri Master License Agreement (acceso público con atribución en el mapa) | Capa opcional de imagen satelital de referencia |
