@@ -78,9 +78,12 @@ Para no caer en una validación circular (calibrar y evaluar con los mismos dato
 1. **Prueba fuera de muestra (Out-of-sample split-half validation):**
    - **Experimento 1:** entrenamos los factores $k_m$ **solo con 2012–2016** y predecimos la serie de Aqua en **2017–2021** usando únicamente S-NPP.
    - **Experimento 2:** entrenamos **solo con 2017–2021** y predecimos **2012–2016**.
-2. **Criterio cuantitativo predefinido:**
-   - Sin armonizar, S-NPP sobrestima a Aqua en **+200 % a +600 %** (según si se miran celdas-día o puntos).
-   - Exigimos que en el bloque de años **no vistos durante el entrenamiento** el error relativo total caiga dentro de **$\le \pm 15\%$** y elimine más del **80 % del sesgo original**.
+2. **Criterio cuantitativo predefinido y resultados reales en Bolivia (grilla 0,25°):**
+   - Sin armonizar, S-NPP sobrestima las celdas-día de Aqua en **`+184,6 %`** en promedio (y hasta `+600 %` en conteo de puntos crudos).
+   - Exigimos que en el bloque de años **no vistos durante el entrenamiento** el error relativo total caiga dentro de **$\le \pm 15\%$**:
+     - **Experimento 1 (entrena 2012–2016 → prueba 2017–2021):** el sesgo pasa de `+177,1 %` (crudo) a **`-6,73 %`** (armonizado), eliminando el **96,2 %** del salto.
+     - **Experimento 2 (entrena 2017–2021 → prueba 2012–2016):** el sesgo pasa de `+194,0 %` (crudo) a **`+8,09 %`** (armonizado), eliminando el **95,8 %** del salto.
+     - **Validación espacial por macrorregiones (2012–2021):** Chiquitanía y Llanos **`-0,45 %`**, Amazonía y Beni Norte **`-11,56 %`**, Región Andina y Valles **`+14,46 %`** (todas dentro del umbral de $\pm 15\%$).
 3. **Prueba visual en la aplicación web:**
    - La app incluye la pestaña de validación con las 3 curvas en 2012–2025: **Aqua real**, **S-NPP crudo** y **S-NPP armonizado**, donde cualquier juez puede verificar visualmente que el salto desaparece en los años de prueba y que en agosto–septiembre de 2020 la serie armonizada repara el hueco del apagón de Aqua.
 
