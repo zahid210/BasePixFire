@@ -12,7 +12,7 @@
 
   <!-- Leaflet v1.9.4 & Leaflet.draw v1.0.4 -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw@1.0.4/leaflet.draw.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
 
   <!-- Hoja de estilos principal (Filosofía Glassmorphism Cinematográfico) -->
   <link rel="stylesheet" href="styles.css" />
@@ -49,7 +49,7 @@
     </defs>
   </svg>
 
-  <div class="app-shell">
+  <div class="app-view">
     <!-- Cabecera superior con navegación centrada en píldora y herramientas circulares -->
     <header class="topbar">
       <div class="brand">
@@ -406,9 +406,12 @@
 
   <!-- Librerías externas con versión fija -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw@1.0.4/leaflet.draw.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+
+  <!-- Fallback sin CORS para compatibilidad universal (protocolo file:// o local) -->
+  <script src="data/processed/data_bundle.js"></script>
 
   <!-- Lógica de datos e interacción -->
   <script src="app.js"></script>

@@ -76,6 +76,13 @@ let chartValidation = null;
  * 1. Carga y parseo de datos estáticos (sin backend)
  * ========================================================================= */
 async function loadAllData() {
+  if (window.PIXFIRE_DATA && window.PIXFIRE_DATA.meta && window.PIXFIRE_DATA.cellsCsv) {
+    state.meta = window.PIXFIRE_DATA.meta;
+    parseCellsCsv(window.PIXFIRE_DATA.cellsCsv, state.meta.cell_size_deg);
+    parseValidationCsv(window.PIXFIRE_DATA.valCsv);
+    return;
+  }
+
   const [metaResp, cellsResp, valResp] = await Promise.all([
     fetch("data/processed/metadata.json"),
     fetch("data/processed/monthly_cells.csv"),
@@ -191,41 +198,45 @@ function initMap() {
   gridLayerGroup = L.layerGroup().addTo(map);
   drawnItems = new L.FeatureGroup().addTo(map);
 
-  const drawControl = new L.Control.Draw({
-    position: "topright",
-    draw: {
-      polygon: {
-        allowIntersection: false,
-        shapeOptions: { color: "#7ff0e8", weight: 2, fillOpacity: 0.16 }
+  if (typeof L.Control !== "undefined" && typeof L.Control.Draw !== "undefined") {
+    const drawControl = new L.Control.Draw({
+      position: "topright",
+      draw: {
+        polygon: {
+          allowIntersection: false,
+          shapeOptions: { color: "#7ff0e8", weight: 2, fillOpacity: 0.16 }
+        },
+        rectangle: {
+          shapeOptions: { color: "#7ff0e8", weight: 2, fillOpacity: 0.16 }
+        },
+        polyline: false,
+        circle: false,
+        marker: false,
+        circlemarker: false
       },
-      rectangle: {
-        shapeOptions: { color: "#7ff0e8", weight: 2, fillOpacity: 0.16 }
-      },
-      polyline: false,
-      circle: false,
-      marker: false,
-      circlemarker: false
-    },
-    edit: {
-      featureGroup: drawnItems,
-      remove: true
+      edit: {
+        featureGroup: drawnItems,
+        remove: true
+      }
+    });
+    map.addControl(drawControl);
+
+    if (typeof L.Draw !== "undefined" && L.Draw.Event) {
+      map.on(L.Draw.Event.CREATED, (e) => {
+        drawnItems.clearLayers();
+        drawnItems.addLayer(e.layer);
+        state.customPolygon = e.layer.toGeoJSON();
+        state.preset = "custom";
+        document.getElementById("presetRegion").value = "custom";
+        syncBboxInputsFromPolygon(state.customPolygon);
+        recomputeAoiSelection();
+      });
+
+      map.on(L.Draw.Event.DELETED, () => {
+        resetToPreset("all");
+      });
     }
-  });
-  map.addControl(drawControl);
-
-  map.on(L.Draw.Event.CREATED, (e) => {
-    drawnItems.clearLayers();
-    drawnItems.addLayer(e.layer);
-    state.customPolygon = e.layer.toGeoJSON();
-    state.preset = "custom";
-    document.getElementById("presetRegion").value = "custom";
-    syncBboxInputsFromPolygon(state.customPolygon);
-    recomputeAoiSelection();
-  });
-
-  map.on(L.Draw.Event.DELETED, () => {
-    resetToPreset("all");
-  });
+  }
 }
 
 function getDensityColor(annualAvg) {
@@ -1231,7 +1242,7 @@ function bindEvents() {
     console.error("Error inicializando la aplicación:", err);
     const warnBar = document.getElementById("aoiWarning");
     document.getElementById("aoiWarningText").textContent =
-      "Error cargando data/processed/. Abre la aplicación mediante un servidor local (ej. python3 -m http.server 8000).";
+      "Error al inicializar datos procesados: " + (err.message || err);
     warnBar.classList.remove("hidden");
   }
 })();
