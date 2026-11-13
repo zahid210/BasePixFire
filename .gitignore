@@ -1,0 +1,16 @@
+# Datos crudos pesados (FIRMS CSVs y ZIPs)
+data/raw/
+
+# Variables de entorno y credenciales
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Sistema y editores
+.DS_Store
+*.swp
