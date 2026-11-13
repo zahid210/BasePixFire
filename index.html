@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PixFire Bolivia — Armonización MODIS &amp; VIIRS (2003–2026)</title>
+  <title>PixFire Bolivia — Atlas Espacio-Temporal MODIS &amp; VIIRS (2003–2026)</title>
 
-  <!-- Tipografía editorial moderna y geométrica: Sora -->
+  <!-- Tipografía geométrica y editorial: Sora -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
 
-  <!-- Hoja de estilos principal: Modo Claro, Minimalismo Arquitectónico sin tarjetas curvas -->
+  <!-- Estilos: Split Cartográfico 50/50, Modo Claro, Minimalismo Arquitectónico Plano -->
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -37,20 +37,19 @@
     </defs>
   </svg>
 
-  <div class="atlas-layout">
-    <!-- 1. BARRA SUPERIOR EDITORIAL (Plana, dividida por líneas arquitectónicas finas) -->
-    <header class="atlas-header">
-      <div class="header-brand">
-        <span class="brand-square"></span>
-        <div>
-          <span class="brand-title">PIXFIRE BOLIVIA</span>
-          <span class="brand-sub">SERIE ARMONIZADA MODIS &amp; VIIRS 2003–2026</span>
+  <div class="atlas-screen">
+    <!-- 1. FRANJA SUPERIOR: IDENTIDAD Y CONTROLES GLOBALES (Plana, 44px) -->
+    <header class="atlas-topbar">
+      <div class="brand-unit">
+        <span class="brand-mark"></span>
+        <div class="brand-text">
+          <span class="brand-name">PIXFIRE BOLIVIA</span>
+          <span class="brand-desc">ARMONIZACIÓN MODIS &amp; VIIRS · 2003–2026</span>
         </div>
       </div>
 
-      <!-- Barra de herramientas y filtros integrados -->
-      <nav class="header-toolbar" aria-label="Controles de búsqueda y filtros">
-        <div class="tool-field">
+      <div class="toolbar-unit">
+        <div class="tool-cell">
           <label for="presetRegion">ÁREA (AOI)</label>
           <select id="presetRegion">
             <option value="all" selected>Toda Bolivia</option>
@@ -61,10 +60,10 @@
           </select>
         </div>
 
-        <div class="tool-field">
+        <div class="tool-cell">
           <label for="focusMonth">MES EVALUADO</label>
-          <div class="combo-selects">
-            <select id="focusMonth" aria-label="Mes a evaluar">
+          <div class="inline-fields">
+            <select id="focusMonth" aria-label="Mes evaluado">
               <option value="1">Ene</option>
               <option value="2">Feb</option>
               <option value="3">Mar</option>
@@ -78,193 +77,185 @@
               <option value="11">Nov</option>
               <option value="12">Dic</option>
             </select>
-            <select id="focusYear" aria-label="Año a evaluar"></select>
+            <select id="focusYear" aria-label="Año evaluado"></select>
           </div>
         </div>
 
-        <div class="tool-field">
-          <label for="yearStart">RANGO DE AÑOS</label>
-          <div class="combo-selects">
-            <select id="yearStart" aria-label="Año de inicio"></select>
-            <span class="dash">—</span>
-            <select id="yearEnd" aria-label="Año de fin"></select>
+        <div class="tool-cell">
+          <label for="yearStart">RANGO AÑOS</label>
+          <div class="inline-fields">
+            <select id="yearStart" aria-label="Año inicio"></select>
+            <span class="sep">—</span>
+            <select id="yearEnd" aria-label="Año fin"></select>
           </div>
         </div>
 
-        <div class="tool-field">
-          <label for="colorRamp">ESCALA TÉRMICA</label>
-          <select id="colorRamp" aria-label="Escala de color del heatmap">
+        <div class="tool-cell">
+          <label for="colorRamp">PALETA</label>
+          <select id="colorRamp" aria-label="Escala de color">
             <option value="fire" selected>Fuego (Ámbar a Carmesí)</option>
-            <option value="viridis">Viridis (Alto contraste)</option>
-            <option value="plasma">Plasma térmico</option>
+            <option value="viridis">Viridis</option>
+            <option value="plasma">Plasma</option>
           </select>
         </div>
 
         <div class="tool-actions">
-          <button type="button" id="btnDownloadSeries" class="btn-flat primary" title="Descargar serie temporal en CSV">
+          <button type="button" id="btnDownloadSeries" class="btn-action primary" title="Descargar serie temporal en CSV">
             <svg class="i"><use href="#ic-download" /></svg>
             <span>Descargar CSV</span>
           </button>
-          <button type="button" id="btnResetAoi" class="btn-flat icon-only" title="Restablecer selección" aria-label="Restablecer filtros">
+          <button type="button" id="btnResetAoi" class="btn-action icon" title="Restablecer filtros a toda Bolivia" aria-label="Restablecer filtros">
             <svg class="i"><use href="#ic-reset" /></svg>
           </button>
         </div>
-      </nav>
+      </div>
     </header>
 
-    <!-- Franja de advertencia en caso de muestra reducida -->
+    <!-- Franja de advertencia -->
     <div id="aoiWarning" class="warning-strip hidden" role="status" aria-live="polite">
       <svg class="i"><use href="#ic-alert" /></svg>
       <span id="aoiWarningText"></span>
     </div>
 
-    <!-- 2. PLANCHA CENTRAL (Cuadrícula arquitectónica 2 columnas: Escenario 70% + Diagnóstico 30%) -->
-    <main class="atlas-body">
-      <!-- ESCENARIO PROTAGONISTA: CALENDARIO DE ACTIVIDAD O MAPA 2D/3D -->
-      <section class="stage-section" aria-label="Escenario principal de visualización">
-        <div class="section-topbar">
-          <div>
-            <span class="section-kicker" id="stageEyebrow">SERIE TEMPORAL 2003–2026 · CELDAS-DÍA EQUIVALENTES AQUA</span>
-            <h1 class="section-title" id="stageTitle">Calendario de Actividad de Quema (Año × Mes)</h1>
+    <!-- 2. SPLIT CARTOGRÁFICO 50 / 50: ESPACIO A LA IZQUIERDA · TIEMPO A LA DERECHA -->
+    <main class="atlas-split">
+      <!-- MITAD IZQUIERDA: EL ESPACIO (Mapa del territorio de Bolivia, grilla y polígonos) -->
+      <section class="split-pane pane-space" aria-label="Mapa territorial de Bolivia y selección espacial">
+        <div class="pane-header-compact">
+          <div class="pane-title-group">
+            <span class="eyebrow-tag">ESPACIO · DÓNDE</span>
+            <h2>Territorio y Grilla de 0,25° (~27,5 km)</h2>
           </div>
-          <div class="section-meta">
-            <span class="badge-tag" id="aoiStatsBadge">Cargando grilla...</span>
-            <button type="button" id="btnQuickSwitchMap" class="btn-flat toggle-view" title="Alternar entre Calendario térmico y Mapa del territorio">
-              Ver Mapa AOI
-            </button>
-          </div>
+          <span class="status-chip" id="aoiStatsBadge">Cargando grilla...</span>
         </div>
 
-        <!-- Vista 1: Calendario de Actividad de Quema (Matriz Año x Mes) -->
-        <div id="stage-calendar" class="stage-pane active">
-          <div id="chartCalendar" class="chart-viewport" role="img" aria-label="Matriz de calor de actividad de quema histórica en Bolivia"></div>
-          <footer class="pane-caption">
-            <span>Guía de lectura rápida: Cada celda representa un mes. Los tonos oscuros indican alta actividad de quema. Haz clic en cualquier mes para actualizar la lectura del diagnóstico.</span>
-            <span id="calendarSummarySR" class="sr-only"></span>
-          </footer>
+        <!-- Visor del Mapa Leaflet en modo claro -->
+        <div class="map-container">
+          <div id="map" class="map-canvas"></div>
         </div>
 
-        <!-- Vista 2: Mapa del Territorio (Grilla de 0,25° y Polígonos) -->
-        <div id="stage-map" class="stage-pane">
-          <div id="mapStageSlot" class="map-viewport">
-            <div id="map" class="leaflet-container-custom"></div>
-          </div>
-          <footer class="pane-caption">
-            <span>Grilla de 0,25° (~27,5 km). Dibuja un polígono con los botones de la esquina superior derecha para recortar el análisis a cualquier provincia, parque nacional o municipio.</span>
-          </footer>
+        <div class="pane-footer-note">
+          <span>Selecciona un preset arriba o usa el lápiz (esquina superior derecha del mapa) para recortar un polígono.</span>
         </div>
       </section>
 
-      <!-- PANEL LATERAL DE LECTURA DIRECTA: CASO DE USO NASA + VALIDACIÓN -->
-      <aside class="panel-section" aria-label="Panel de diagnóstico y evidencia científica">
-        <!-- BLOQUE 1: DIAGNÓSTICO DEL MES EVALUADO VS MEDIANA HISTÓRICA -->
-        <div class="panel-block">
-          <div class="block-header">
-            <span class="section-kicker">CASO DE USO PRINCIPAL</span>
-            <h2 id="diagPeriodTitle">Octubre 2026</h2>
+      <!-- MITAD DERECHA: EL TIEMPO Y LA CIENCIA (Diagnóstico + Calendario Heatmap + Validación) -->
+      <section class="split-pane pane-time" aria-label="Serie temporal, diagnóstico climatológico y validación científica">
+        <!-- BLOQUE SUPERIOR DERECHO: DIAGNÓSTICO CLIMATOLÓGICO (Caso de uso principal de la NASA) -->
+        <article class="time-subblock block-diagnostic">
+          <div class="subblock-header">
+            <div>
+              <span class="eyebrow-tag">TIEMPO · CUÁNDO · CASO DE USO NASA</span>
+              <h3 id="diagPeriodTitle">Octubre 2026</h3>
+            </div>
+            <strong class="anomaly-pill" id="kpiAnomalyVal">—</strong>
           </div>
 
-          <div class="big-indicator">
-            <span class="indicator-value" id="kpiCurrentVal">—</span>
-            <span class="indicator-unit">celdas-día con fuego</span>
-          </div>
+          <div class="diagnostic-row">
+            <div class="huge-number-cell">
+              <span class="huge-val" id="kpiCurrentVal">—</span>
+              <span class="huge-unit">celdas-día con fuego</span>
+            </div>
 
-          <!-- Semáforo visual del rango climatológico -->
-          <div class="climatology-gauge">
-            <div class="gauge-header">
-              <span>Comparación vs. Mediana Histórica (2003–2025):</span>
-              <strong class="anomaly-badge" id="kpiAnomalyVal">—</strong>
-            </div>
-            <div class="gauge-bar-track">
-              <div class="gauge-range-normal" title="Banda normal (Percentil 25 a 75)"></div>
-              <div class="gauge-median-marker" title="Mediana histórica climatológica"></div>
-            </div>
-            <div class="gauge-labels">
-              <span>P25 normal</span>
-              <span>Mediana: <b id="kpiMedianVal">—</b></span>
-              <span>P75 normal</span>
-            </div>
-          </div>
-
-          <!-- Desglose de cifras clave -->
-          <div class="metrics-grid">
-            <div class="metric-cell">
-              <span class="metric-label">Rango Normal (P25–P75)</span>
-              <strong class="metric-num" id="kpiIqrVal">—</strong>
-            </div>
-            <div class="metric-cell">
-              <span class="metric-label">Promedio Histórico</span>
-              <strong class="metric-num" id="kpiMeanVal">—</strong>
+            <!-- Semáforo visual del rango climatológico -->
+            <div class="climatology-indicator">
+              <div class="indicator-track">
+                <div class="track-normal-zone" title="Rango normal intercuartílico (P25 - P75)"></div>
+                <div class="track-current-marker" title="Valor del mes evaluado"></div>
+              </div>
+              <div class="track-labels">
+                <span>P25 normal</span>
+                <span>Mediana histórica: <b id="kpiMedianVal">—</b></span>
+                <span>P75 normal</span>
+              </div>
             </div>
           </div>
 
-          <div class="block-footer">
-            <span id="kpiAnomalyText">Suma agregada del área de interés seleccionada.</span>
-            <strong id="kpiCurrentSource">Fuente: VIIRS S-NPP armonizado</strong>
-          </div>
-        </div>
-
-        <!-- BLOQUE 2: VALIDACIÓN CIENTÍFICA DEL MÉTODO -->
-        <div class="panel-block validation-block">
-          <div class="block-header">
-            <span class="section-kicker">EVIDENCIA CIENTÍFICA</span>
-            <h2>Eliminación del Salto Instrumental</h2>
-          </div>
-
-          <p class="validation-summary">
-            Sin armonización, VIIRS (375 m) registra un <strong>+177 % más de focos</strong> que MODIS (1 km) debido a su mayor resolución. Nuestro método neutraliza el salto en la grilla y calibra la escala.
-          </p>
-
-          <div class="comparison-strip">
-            <div class="strip-item">
-              <span>Salto Crudo del Sensor</span>
-              <strong class="text-alert">+177,1 %</strong>
+          <div class="diagnostic-stats">
+            <div class="stat-item">
+              <span class="stat-label">Banda Normal (P25–P75)</span>
+              <strong id="kpiIqrVal">—</strong>
             </div>
-            <div class="strip-arrow">→</div>
-            <div class="strip-item">
-              <span>Sesgo Armonizado</span>
-              <strong class="text-success" id="valSplit1Bias">-6,73 %</strong>
+            <div class="stat-item">
+              <span class="stat-label">Promedio Histórico</span>
+              <strong id="kpiMeanVal">—</strong>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Sensor Activo</span>
+              <strong id="kpiCurrentSource">Fuente: VIIRS S-NPP armonizado</strong>
             </div>
           </div>
+          <span id="kpiAnomalyText" class="sr-only"></span>
+        </article>
 
-          <div class="sub-metrics">
-            <div class="sub-row">
-              <span>MODIS Aqua real (2017–21):</span>
-              <b id="valSplit1Aqua">59 822</b>
+        <!-- BLOQUE CENTRAL DERECHO: EL CALENDARIO DE QUEMA (Matriz Año x Mes) -->
+        <article class="time-subblock block-calendar">
+          <div class="subblock-header">
+            <div>
+              <span class="eyebrow-tag" id="stageEyebrow">SERIE HISTÓRICA CONTINUA (2003–2026)</span>
+              <h3 id="stageTitle">Calendario de Actividad de Quema (Año × Mes)</h3>
             </div>
-            <div class="sub-row">
-              <span>VIIRS S-NPP armonizado:</span>
-              <b id="valSplit1Harm">55 795,3</b>
+            <span class="mini-hint">Haz clic en cualquier celda para inspeccionarla</span>
+          </div>
+
+          <div class="calendar-chart-wrap">
+            <div id="chartCalendar" class="chart-canvas" role="img" aria-label="Matriz de calor de quema Año por Mes"></div>
+            <span id="calendarSummarySR" class="sr-only"></span>
+          </div>
+        </article>
+
+        <!-- BLOQUE INFERIOR DERECHO: VALIDACIÓN CIENTÍFICA (Eliminación del salto) -->
+        <article class="time-subblock block-validation">
+          <div class="subblock-header">
+            <div>
+              <span class="eyebrow-tag">EVALUACIÓN CIENTÍFICA</span>
+              <h3>Neutralización del Salto MODIS (1 km) vs. VIIRS (375 m)</h3>
             </div>
-            <div class="sub-row">
-              <span>Factor estacional del mes ($k_m$):</span>
-              <b id="msFactorVal">—</b>
+            <div class="validation-badge-clean">
+              <svg class="i text-teal"><use href="#ic-check" /></svg>
+              <span>Salto eliminado</span>
             </div>
           </div>
 
-          <div class="block-footer note">
-            <svg class="i icon-check"><use href="#ic-check" /></svg>
-            <span id="valSplit1Raw">Salto bruto eliminado: +177,1 % → -6,7 %</span>
+          <div class="validation-strip-grid">
+            <div class="val-metric">
+              <span class="val-lbl">Salto crudo instrumental:</span>
+              <strong class="val-num red">+177,1 %</strong>
+            </div>
+            <div class="val-arrow">→</div>
+            <div class="val-metric">
+              <span class="val-lbl">Sesgo residual armonizado:</span>
+              <strong class="val-num teal" id="valSplit1Bias">-6,73 %</strong>
+            </div>
+            <div class="val-metric">
+              <span class="val-lbl">Aqua real vs. S-NPP arm.:</span>
+              <span class="val-detail"><b id="valSplit1Aqua">59 822</b> vs <b id="valSplit1Harm">55 795,3</b></span>
+            </div>
+            <div class="val-metric">
+              <span class="val-lbl">Factor $k_m$ del mes:</span>
+              <strong class="val-detail" id="msFactorVal">—</strong>
+            </div>
           </div>
-        </div>
-      </aside>
+          <span id="valSplit1Raw" class="sr-only">Salto bruto eliminado: +177,1 % → -6,7 %</span>
+        </article>
+      </section>
     </main>
 
-    <!-- 3. PIE DE PÁGINA EDITORIAL (Plano, tipografía fina, enlaces limpios) -->
+    <!-- 3. PIE DE PÁGINA EDITORIAL (24px) -->
     <footer class="atlas-footer">
-      <div class="footer-col">
+      <div class="footer-segment">
         <strong>PixFire Bolivia</strong> · Código abierto bajo licencia <a href="LICENSE" target="_blank" rel="noopener">Apache 2.0</a> ·
         <a href="REFERENCES.md" target="_blank" rel="noopener">Referencias</a> ·
         <a href="docs/METODO.md" target="_blank" rel="noopener">Metodología Científica</a>
       </div>
-      <div class="footer-col right">
+      <div class="footer-segment right">
         Datos satelitales: <em>NASA FIRMS ESDIS (<a href="https://www.earthdata.nasa.gov/data/tools/firms" target="_blank" rel="noopener">earthdata.nasa.gov/firms</a>)</em>.
-        Proyecto desarrollado para el Space Apps Challenge 2026; sin patrocinio oficial de NASA.
+        Proyecto desarrollado para el NASA Space Apps Challenge 2026; sin patrocinio oficial de NASA.
       </div>
     </footer>
   </div>
 
-  <!-- Librerías con versión fija -->
+  <!-- Librerías externas -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
@@ -273,7 +264,7 @@
   <!-- Fallback de datos autónomo (compatible con file:// y http://) -->
   <script src="data/processed/data_bundle.js"></script>
 
-  <!-- Lógica cliente -->
+  <!-- Lógica y renderizado cliente -->
   <script src="app.js"></script>
 </body>
 </html>

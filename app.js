@@ -463,7 +463,7 @@ function updateTelemetryCard(histStats) {
   }
 
   // Actualizar marcador del gauge visual
-  const markerEl = document.querySelector(".gauge-median-marker");
+  const markerEl = document.querySelector(".track-current-marker");
   if (markerEl && mStat.p75 > 0) {
     const pos = Math.min(95, Math.max(5, (currVal / (mStat.p75 * 1.6)) * 100));
     markerEl.style.left = `${pos}%`;
@@ -639,24 +639,11 @@ function renderCalendarChart() {
 function switchStage(stageId) {
   state.activeStage = stageId;
 
-  document.querySelectorAll(".stage-pane").forEach((pane) => {
-    pane.classList.toggle("active", pane.id === stageId);
-  });
-
   const info = STAGE_META[stageId] || STAGE_META["stage-calendar"];
   const eyebrowEl = document.getElementById("stageEyebrow");
   const titleEl = document.getElementById("stageTitle");
   if (eyebrowEl) eyebrowEl.textContent = info.eyebrow;
   if (titleEl) titleEl.textContent = info.title;
-
-  const quickBtn = document.getElementById("btnQuickSwitchMap");
-  if (quickBtn) {
-    if (stageId === "stage-map") {
-      quickBtn.textContent = "Ver Calendario";
-    } else {
-      quickBtn.textContent = "Ver Mapa AOI";
-    }
-  }
 
   setTimeout(() => {
     if (chartCalendar) chartCalendar.resize();
@@ -730,13 +717,6 @@ function populateYearSelectors() {
 }
 
 function bindEvents() {
-  const quickSwitchBtn = document.getElementById("btnQuickSwitchMap");
-  if (quickSwitchBtn) {
-    quickSwitchBtn.addEventListener("click", () => {
-      switchStage(state.activeStage === "stage-map" ? "stage-calendar" : "stage-map");
-    });
-  }
-
   const presetSel = document.getElementById("presetRegion");
   if (presetSel) {
     presetSel.addEventListener("change", (e) => {
