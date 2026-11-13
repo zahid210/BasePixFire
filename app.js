@@ -131,13 +131,15 @@ function parseValidationCsv(csvText) {
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
     if (!line) continue;
-    const [yStr, mStr, aStr, sRawStr, sHarmStr] = line.split(",");
+    const [yStr, mStr, harmStr, aStr, sRawStr, sConvStr, split] = line.split(",");
     state.validationRows.push({
       year: parseInt(yStr, 10),
       month: parseInt(mStr, 10),
-      aqua: parseFloat(aStr),
-      snpp_raw: parseFloat(sRawStr),
-      snpp_harmonized: parseFloat(sHarmStr)
+      harmonized: parseFloat(harmStr),
+      aqua: aStr === "" ? null : parseFloat(aStr),
+      snpp_raw: sRawStr === "" ? null : parseFloat(sRawStr),
+      snpp_harmonized: sConvStr === "" ? null : parseFloat(sConvStr),
+      split: split ? split.trim() : ""
     });
   }
 }
@@ -238,11 +240,22 @@ function renderMapGrid() {
   if (!gridLayerGroup || !state.meta) return;
   gridLayerGroup.clearLayers();
   const half = state.meta.cell_size_deg / 2.0;
-  const numYears = 23.8;
+
+  let activeMonths = 0;
+  for (let y = state.yearStart; y <= state.yearEnd; y++) {
+    activeMonths += y === 2026 ? 10 : 12;
+  }
+  const numYears = Math.max(0.833, activeMonths / 12.0);
 
   state.cellsMeta.forEach((cell) => {
     const isSelected = state.selectedCells.has(cell.cellId);
-    const annualAvg = cell.totalHarm / numYears;
+    let periodHarm = 0;
+    for (const r of cell.records) {
+      if (r.year >= state.yearStart && r.year <= state.yearEnd) {
+        periodHarm += r.harm;
+      }
+    }
+    const annualAvg = periodHarm / numYears;
     const fillColor = getDensityColor(annualAvg);
 
     const bounds = [
@@ -260,8 +273,8 @@ function renderMapGrid() {
     rect.bindTooltip(
       `<strong>Celda ${cell.cellId}</strong><br>` +
       `Centro: ${cell.lat.toFixed(3)}°, ${cell.lon.toFixed(3)}°<br>` +
-      `Promedio: ${annualAvg.toFixed(1)} celdas-día/año<br>` +
-      `Total 2003–2026: ${cell.totalHarm.toFixed(1)} celdas-día`,
+      `Promedio (${state.yearStart}–${state.yearEnd}): ${annualAvg.toFixed(1)} celdas-día/año<br>` +
+      `Acumulado (${state.yearStart}–${state.yearEnd}): ${periodHarm.toFixed(1)} celdas-día`,
       { sticky: true }
     );
 
@@ -302,6 +315,20 @@ function recomputeAoiSelection() {
   const warnBar = document.getElementById("aoiWarning");
   const warnTxt = document.getElementById("aoiWarningText");
   const warnings = [];
+
+  if (state.preset === "custom" && state.customPolygon && state.meta && Array.isArray(state.meta.bbox)) {
+    const [bMinLon, bMinLat, bMaxLon, bMaxLat] = state.meta.bbox;
+    const polyBbox = turf.bbox(state.customPolygon);
+    const tol = 0.25;
+    if (
+      polyBbox[0] < bMinLon - tol ||
+      polyBbox[1] < bMinLat - tol ||
+      polyBbox[2] > bMaxLon + tol ||
+      polyBbox[3] > bMaxLat + tol
+    ) {
+      warnings.push("Parte del polígono se extiende fuera de la cobertura de Bolivia; solo se incluyen las celdas dentro del país.");
+    }
+  }
 
   if (count === 0) {
     warnings.push("El área seleccionada no contiene celdas con detecciones de fuego en Bolivia.");
@@ -351,7 +378,7 @@ function aggregateSelectedCells() {
       bucket.harm += r.harm;
       if (r.aqua !== null) bucket.aqua = (bucket.aqua || 0) + r.aqua;
       if (r.snpp !== null) bucket.snpp = (bucket.snpp || 0) + r.snpp;
-      if (r.source === "snpp_nrt") bucket.hasNrt = true;
+      if (r.source === "snpp_converted_nrt" || r.source === "snpp_nrt") bucket.hasNrt = true;
     }
   });
 }
@@ -462,11 +489,27 @@ function updateTelemetryCard(histStats) {
     }
   }
 
-  // Actualizar marcador del gauge visual
+  // Actualizar marcador del gauge visual con interpolación lineal por tramos (P25=25%, Mediana=50%, P75=75%)
   const markerEl = document.querySelector(".track-current-marker");
-  if (markerEl && mStat.p75 > 0) {
-    const pos = Math.min(95, Math.max(5, (currVal / (mStat.p75 * 1.6)) * 100));
-    markerEl.style.left = `${pos}%`;
+  if (markerEl) {
+    const p25 = mStat.p25;
+    const med = mStat.median;
+    const p75 = mStat.p75;
+    let pos = 50;
+    if (p75 <= 0 && currVal <= 0) {
+      pos = 25;
+    } else if (currVal <= p25) {
+      pos = p25 > 0 ? 3 + (currVal / p25) * 22 : 25;
+    } else if (currVal <= med) {
+      pos = med > p25 ? 25 + ((currVal - p25) / (med - p25)) * 25 : 50;
+    } else if (currVal <= p75) {
+      pos = p75 > med ? 50 + ((currVal - med) / (p75 - med)) * 25 : 75;
+    } else {
+      const upperCap = Math.max(p75 * 2.0, p75 + (p75 - p25) * 1.5, 10);
+      const ratio = Math.min(1, (currVal - p75) / Math.max(1, upperCap - p75));
+      pos = 75 + ratio * 22;
+    }
+    markerEl.style.left = `${Math.min(97, Math.max(3, pos)).toFixed(1)}%`;
   }
 
   const factorEl = document.getElementById("msFactorVal");
@@ -557,17 +600,22 @@ function renderCalendarChart() {
       borderWidth: 1,
       textStyle: { color: "#ffffff", fontFamily: "Sora, sans-serif", fontSize: 11 },
       formatter: (p) => {
-        const mName = MONTH_NAMES[p.value[0]];
+        const mIdx = p.value[0];
+        const mNum = mIdx + 1;
+        const mName = MONTH_NAMES[mIdx];
         const year = years[p.value[1]];
+        const yNum = parseInt(year, 10);
         const val = p.value[2];
-        const ym = `${year}-${String(p.value[0] + 1).padStart(2, "0")}`;
+        const ym = `${year}-${String(mNum).padStart(2, "0")}`;
         const b = state.currentSeriesByYm.get(ym);
-        const srcText =
-          parseInt(year, 10) < 2022
-            ? "MODIS Aqua (calibrado)"
-            : b && b.hasNrt
-              ? "VIIRS S-NPP (NRT provisional)"
-              : "VIIRS S-NPP (armonizado)";
+        let srcText = "MODIS Aqua directo (referencia)";
+        if (yNum === 2020 && (mNum === 8 || mNum === 9)) {
+          srcText = "VIIRS S-NPP (armonizado, apagón Aqua)";
+        } else if (yNum >= 2022) {
+          srcText = b && b.hasNrt
+            ? "VIIRS S-NPP (NRT provisional)"
+            : "VIIRS S-NPP (armonizado)";
+        }
         return `
           <div style="font-weight:700;margin-bottom:3px">${mName} ${year}</div>
           <div>Actividad: <b>${val.toLocaleString("es-BO")}</b> celdas-día eq. Aqua</div>
@@ -739,6 +787,7 @@ function bindEvents() {
         state.yearEnd = state.yearStart;
         document.getElementById("yearEnd").value = String(state.yearEnd);
       }
+      renderMapGrid();
       updateAllViews();
     });
   }
@@ -751,6 +800,7 @@ function bindEvents() {
         state.yearStart = state.yearEnd;
         document.getElementById("yearStart").value = String(state.yearStart);
       }
+      renderMapGrid();
       updateAllViews();
     });
   }

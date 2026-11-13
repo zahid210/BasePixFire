@@ -31,7 +31,7 @@ Una fila por celda y mes con al menos una detección en cualquiera de los dos se
 | `cell_id` | texto | `"<row>_<col>"` donde `row = floor((lat + 90) / cell_size_deg)` y `col = floor((lon + 180) / cell_size_deg)`. El centro es `lat = (row + 0.5) * cell_size_deg - 90`, `lon = (col + 0.5) * cell_size_deg - 180` |
 | `year` | entero | Año (`2003` a `2026`) |
 | `month` | entero | Mes (`1` a `12`) |
-| `count_harmonized` | decimal (1 dec) | **Celdas-día con fuego en equivalente Aqua.** Entero cuando proviene de Aqua; decimal redondeado a 1 decimal cuando proviene de S-NPP × `factor[month]` |
+| `count_harmonized` | decimal (hasta 4 dec) | **Celdas-día con fuego en equivalente Aqua.** Entero cuando proviene de Aqua; decimal redondeado a 4 decimales cuando proviene de S-NPP × `factor[month]` para preservar linealidad exacta al sumar celdas |
 | `count_raw_aqua` | entero o vacío | Celdas-día con detección Aqua en ese mes. Vacío (`""`) si Aqua no tiene cobertura válida |
 | `count_raw_snpp` | entero o vacío | Celdas-día con detección S-NPP en ese mes. **Vacío (`""`) antes de 2012-01** y después de 2026-10 |
 | `source` | texto | `"aqua"`, `"snpp_converted"` o `"snpp_converted_nrt"` |

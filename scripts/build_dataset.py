@@ -321,7 +321,7 @@ def main() -> None:
             elif (y, m) in OUTAGE_YM or y >= 2022:
                 is_nrt = (y, m) in snpp_nrt_ym
                 source = "snpp_converted_nrt" if is_nrt else "snpp_converted"
-                harm = round(s_val * final_factors[m], 1)
+                harm = round(s_val * final_factors[m], 4)
                 a_str = "" if (y >= 2026 and m > 10) else str(a_val)
                 s_str = str(s_val)
             else:
@@ -333,7 +333,7 @@ def main() -> None:
             if harm == 0.0 and a_val == 0 and s_val == 0:
                 continue
 
-            harm_str = f"{int(harm)}" if harm.is_integer() else f"{harm:.1f}"
+            harm_str = f"{int(harm)}" if harm.is_integer() else f"{harm:.4f}".rstrip("0").rstrip(".")
             writer.writerow([f"{r}_{c}", y, m, harm_str, a_str, s_str, source])
             harm_ym[(y, m)] += harm
 
@@ -415,6 +415,18 @@ def main() -> None:
     meta_path = args.out_dir / "metadata.json"
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2, ensure_ascii=False)
+
+    # Generar data_bundle.js para compatibilidad directa file:///
+    bundle_path = args.out_dir / "data_bundle.js"
+    with open(cells_csv_path, "r", encoding="utf-8") as fc, open(val_csv_path, "r", encoding="utf-8") as fv:
+        cells_text = fc.read()
+        val_text = fv.read()
+    with open(bundle_path, "w", encoding="utf-8") as fb:
+        fb.write("window.PIXFIRE_DATA = {\n")
+        fb.write(f"  meta: {json.dumps(meta, ensure_ascii=False)},\n")
+        fb.write(f"  cellsCsv: {json.dumps(cells_text, ensure_ascii=False)},\n")
+        fb.write(f"  valCsv: {json.dumps(val_text, ensure_ascii=False)}\n")
+        fb.write("};\n")
 
     size_mb = cells_csv_path.stat().st_size / 1e6
     print(f"\n=== RESUMEN DEL PIPELINE (cell_size = {args.cell_size}°) ===")

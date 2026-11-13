@@ -39,7 +39,7 @@ Construimos un **pipeline reproducible en Python** ([scripts/build_dataset.py](f
 
 ## 3. Cómo Ejecutar la Aplicación Web
 
-Los datos ya procesados y armonizados (`data/processed/monthly_cells.csv`, `validation.csv` y `metadata.json`) están incluidos en el repositorio y pesan solo **4,10 MB**, por lo que la aplicación funciona de inmediato sin instalar dependencias:
+Los datos ya procesados y armonizados (`data/processed/monthly_cells.csv`, `validation.csv`, `metadata.json` y `data_bundle.js`) están incluidos en el repositorio (`monthly_cells.csv` pesa **4,20 MB**), por lo que la aplicación funciona de inmediato tanto mediante un servidor local como abriendo `index.html` directamente en el navegador (`file:///`):
 
 ```bash
 # Desde la raíz del repositorio:
