@@ -24,17 +24,6 @@ const COLOR_RAMPS = {
   plasma: ["#f0f921", "#f89540", "#cc4778", "#7e03a8", "#0d0887"]
 };
 
-const STAGE_META = {
-  "stage-calendar": {
-    eyebrow: "SERIE ARMONIZADA 2003–2026 · EQUIVALENTE MODIS AQUA",
-    title: "Calendario de Actividad de Quema (Año × Mes)"
-  },
-  "stage-map": {
-    eyebrow: "SELECCIÓN GEOESPACIAL · GRILLA DE 0,25° (~27,5 KM)",
-    title: "Mapa Interactivo del Área de Interés (AOI)"
-  }
-};
-
 const state = {
   meta: null,
   cellsMeta: new Map(), // cell_id -> { cellId, row, col, lat, lon, subregion, totalHarm, records: [] }
@@ -43,7 +32,6 @@ const state = {
   selectedCells: new Set(),
   customPolygon: null,
   preset: "all",
-  activeStage: "stage-calendar",
   yearStart: 2003,
   yearEnd: 2026,
   focusYear: 2026,
@@ -498,9 +486,9 @@ function updateTelemetryCard(histStats) {
     } else {
       const diffMean = currVal - mStat.mean;
       const sign = diffMean >= 0 ? "+" : "";
-      anomEl.textContent = `${sign}${diffMean.toFixed(1)}`;
+      anomEl.textContent = `${sign}${diffMean.toFixed(1)} vs. media`;
       anomEl.style.color = diffMean > 0 ? "#c2410c" : "#0f766e";
-      anomTxt.textContent = `Mediana = 0; diferencia vs. promedio (${mStat.mean.toFixed(1)})`;
+      anomTxt.textContent = `Mediana = 0; diferencia frente al promedio histórico (${mStat.mean.toFixed(1)} celdas-día)`;
     }
   }
 
@@ -542,6 +530,13 @@ function updateTelemetryCard(histStats) {
 function populateScienceRailFromMeta() {
   if (!state.meta) return;
 
+  const eyebrowEl = document.getElementById("valScopeEyebrow");
+  const rawNumEl = document.getElementById("valSplit1RawNum");
+  const biasEl = document.getElementById("valSplit1Bias");
+  const aquaEl = document.getElementById("valSplit1Aqua");
+  const harmEl = document.getElementById("valSplit1Harm");
+  const rawEl = document.getElementById("valSplit1Raw");
+
   const subMap = {
     chiquitania: "chiquitania_llanos",
     amazonia: "amazonia_beni_norte",
@@ -550,10 +545,13 @@ function populateScienceRailFromMeta() {
 
   let metrics = null;
   if (state.preset === "all") {
+    if (eyebrowEl) eyebrowEl.textContent = "EVALUACIÓN CIENTÍFICA · PRUEBA FUERA DE MUESTRA (2017–2021)";
     metrics = state.meta.validation_metrics?.train_2012_2016_test_2017_2021;
   } else if (subMap[state.preset]) {
+    if (eyebrowEl) eyebrowEl.textContent = "EVALUACIÓN CIENTÍFICA · TRASLAPE EN SUBREGIÓN (2012–2021)";
     metrics = state.meta.validation_metrics?.subregions_2012_2021?.[subMap[state.preset]];
   } else if (state.preset === "custom") {
+    if (eyebrowEl) eyebrowEl.textContent = "EVALUACIÓN CIENTÍFICA · TRASLAPE EN POLÍGONO (2012–2021)";
     let sumAqua = 0;
     let sumSnppRaw = 0;
     let sumSnppHarm = 0;
@@ -581,20 +579,17 @@ function populateScienceRailFromMeta() {
         raw_bias_pct: Math.round(((sumSnppRaw - sumAqua) / sumAqua) * 10000) / 100,
         harmonized_bias_pct: Math.round(((sumSnppHarm - sumAqua) / sumAqua) * 10000) / 100
       };
+    } else {
+      if (rawNumEl) rawNumEl.textContent = "—";
+      if (biasEl) biasEl.textContent = "—";
+      if (aquaEl) aquaEl.textContent = "0";
+      if (harmEl) harmEl.textContent = sumSnppHarm.toFixed(1);
+      if (rawEl) rawEl.textContent = "Sin detecciones de referencia MODIS Aqua en 2012–2021 dentro del polígono.";
+      return;
     }
   }
 
-  if (!metrics) {
-    metrics = state.meta.validation_metrics?.train_2012_2016_test_2017_2021;
-  }
-
   if (metrics) {
-    const rawNumEl = document.getElementById("valSplit1RawNum");
-    const biasEl = document.getElementById("valSplit1Bias");
-    const aquaEl = document.getElementById("valSplit1Aqua");
-    const harmEl = document.getElementById("valSplit1Harm");
-    const rawEl = document.getElementById("valSplit1Raw");
-
     const rawSign = metrics.raw_bias_pct >= 0 ? "+" : "";
     const harmSign = metrics.harmonized_bias_pct > 0 ? "+" : "";
 
@@ -628,6 +623,7 @@ function renderCalendarChart() {
         const ySel = document.getElementById("focusYear");
         if (mSel) mSel.value = String(state.focusMonth);
         if (ySel) ySel.value = String(state.focusYear);
+        syncFocusMonthOptions();
 
         updateAllViews();
       }
@@ -748,21 +744,18 @@ function renderCalendarChart() {
 }
 
 /* =========================================================================
- * 7. Alternancia de Escenario y Descarga CSV
+ * 7. Descarga CSV y Controles de Interfaz
  * ========================================================================= */
-function switchStage(stageId) {
-  state.activeStage = stageId;
-
-  const info = STAGE_META[stageId] || STAGE_META["stage-calendar"];
-  const eyebrowEl = document.getElementById("stageEyebrow");
-  const titleEl = document.getElementById("stageTitle");
-  if (eyebrowEl) eyebrowEl.textContent = info.eyebrow;
-  if (titleEl) titleEl.textContent = info.title;
-
-  setTimeout(() => {
-    if (chartCalendar) chartCalendar.resize();
-    if (map) map.invalidateSize();
-  }, 50);
+function syncFocusMonthOptions() {
+  const focusMSel = document.getElementById("focusMonth");
+  if (!focusMSel) return;
+  const is2026 = state.focusYear === 2026;
+  Array.from(focusMSel.options).forEach((opt) => {
+    const mVal = parseInt(opt.value, 10);
+    if (mVal > 10) {
+      opt.disabled = is2026;
+    }
+  });
 }
 
 function triggerCsvDownload(filename, csvContent) {
@@ -919,6 +912,7 @@ function bindEvents() {
         state.focusMonth = 10;
         document.getElementById("focusMonth").value = "10";
       }
+      syncFocusMonthOptions();
       updateAllViews();
     });
   }
@@ -931,9 +925,12 @@ function bindEvents() {
         state.focusYear = 2025;
         document.getElementById("focusYear").value = "2025";
       }
+      syncFocusMonthOptions();
       updateAllViews();
     });
   }
+
+  syncFocusMonthOptions();
 
   const dlSeriesBtn = document.getElementById("btnDownloadSeries");
   if (dlSeriesBtn) {
