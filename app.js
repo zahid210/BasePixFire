@@ -121,31 +121,35 @@ function initMap() {
     maxZoom: 10
   });
 
-  // Capa 1: OpenStreetMap estándar (gratis, abierto, sin API Key)
-  const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: '&copy; OpenStreetMap contributors | Datos: NASA FIRMS',
+  const CARTO_KEY = "cb1_58lv_1_5016ded4d19a88b491106fc0";
+
+  // Capa 1: Carto Dark Matter (el modo oscuro premium de Carto, con API Key oficial)
+  const cartoDark = L.tileLayer(`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO | Datos: NASA FIRMS',
+    subdomains: 'abcd',
     maxZoom: 19
   });
 
-  // Capa 2: Esri World Imagery (satélite real en alta resolución, sin API Key)
+  // Capa 2: Carto Voyager (modo claro elegante)
+  const cartoVoyager = L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO | Datos: NASA FIRMS',
+    subdomains: 'abcd',
+    maxZoom: 19
+  });
+
+  // Capa 3: Satélite Real (Esri World Imagery)
   const satLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, USDA, USGS, AeroGRID, IGN, and the GIS User Community | Datos: NASA FIRMS',
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics | Datos: NASA FIRMS',
     maxZoom: 18
   });
 
-  // Capa 3: Esri World Gray Canvas (modo oscuro / neutral elegante para dashboards, sin API Key)
-  const grayLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
-    attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ | Datos: NASA FIRMS',
-    maxZoom: 16
-  });
-
-  // Capa por defecto: Dark Gray Canvas (elegante, oscuro y 0% Carto)
-  grayLayer.addTo(map);
+  // Capa por defecto: Carto Dark Matter
+  cartoDark.addTo(map);
 
   const baseMaps = {
-    "Mapa Oscuro (Esri Canvas)": grayLayer,
-    "Satélite Real (Esri World Imagery)": satLayer,
-    "Calles (OpenStreetMap)": osmLayer
+    "Carto Dark Matter (Oscuro)": cartoDark,
+    "Carto Voyager (Claro)": cartoVoyager,
+    "Satélite Real (Esri)": satLayer
   };
 
   L.control.layers(baseMaps, null, { position: "topleft" }).addTo(map);
