@@ -121,28 +121,31 @@ function initMap() {
     maxZoom: 10
   });
 
-  const darkLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    attribution: '&copy; OpenStreetMap &copy; CARTO | Datos: NASA FIRMS',
-    subdomains: 'abcd',
-    maxZoom: 19
-  });
-
+  // Capa 1: OpenStreetMap estándar (gratis, abierto, sin API Key)
   const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: '&copy; OpenStreetMap contributors | Datos: NASA FIRMS',
     maxZoom: 19
   });
 
+  // Capa 2: Esri World Imagery (satélite real en alta resolución, sin API Key)
   const satLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community | Datos: NASA FIRMS',
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, USDA, USGS, AeroGRID, IGN, and the GIS User Community | Datos: NASA FIRMS',
     maxZoom: 18
   });
 
-  darkLayer.addTo(map);
+  // Capa 3: Esri World Gray Canvas (modo oscuro / neutral elegante para dashboards, sin API Key)
+  const grayLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+    attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ | Datos: NASA FIRMS',
+    maxZoom: 16
+  });
+
+  // Capa por defecto: Dark Gray Canvas (elegante, oscuro y 0% Carto)
+  grayLayer.addTo(map);
 
   const baseMaps = {
-    "Mapa Claro (Carto/OSM)": darkLayer,
-    "OpenStreetMap Estándar": osmLayer,
-    "Satélite (Esri World Imagery)": satLayer
+    "Mapa Oscuro (Esri Canvas)": grayLayer,
+    "Satélite Real (Esri World Imagery)": satLayer,
+    "Calles (OpenStreetMap)": osmLayer
   };
 
   L.control.layers(baseMaps, null, { position: "topleft" }).addTo(map);
