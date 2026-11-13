@@ -1,141 +1,95 @@
-# ARCHITECTURE.md — Arquitectura (BORRADOR v2)
+# ARCHITECTURE.md — Arquitectura (DEFINITIVA v3)
 
-> **Estado: borrador v2 (13/11/2026).** Actualizado tras verificar fuentes oficiales de FIRMS/NASA y revisar archivos reales de FIRMS. Las marcas **🔄 CAMBIO** indican qué cambió respecto al v1 y por qué. Lo marcado **[PENDIENTE]** se cierra con los recursos oficiales del reto o con el spike de datos. Un agente de IA debe proponer mejoras y preguntar, no tratar esto como definitivo.
+> **Estado: definitiva v3 (13/11/2026).** Lista para implementación tras la revisión cruzada (Prompt #3) y la confirmación de recursos oficiales y acceso a FIRMS Archive Download.
 
-## 0. Registro de cambios (v1 → v2)
+## 0. Registro de cambios (v1 → v2 → v3)
 
 | # | Cambio | Por qué |
 |---|---|---|
-| 1 | Fuente de datos: CSV anuales por país de FIRMS (públicos, sin login) | Verificado: existen, son calidad estándar (no NRT) y traen el campo `type`. Elimina la dependencia de cuentas o descargas lentas |
-| 2 | Pareja de satélites: **Aqua (MODIS) + S-NPP (VIIRS)** | Ambos cruzan el ecuador a la 1:30 p. m. (guías oficiales MODIS y VIIRS), lo que elimina diferencias por hora del día |
-| 3 | Serie: **2003–2025**, mensual | Aqua desde jul 2002; los CSV anuales llegan hasta 2025; la guía MODIS advierte sesgos con intervalos < ~8 días |
-| 4 | Calibración: **20 ene 2012 – dic 2021**, sin 16 ago – 2 sep 2020 | Inicio de S-NPP; Aqua deriva de órbita desde dic 2021 (aqua.nasa.gov); apagón de Aqua de 2020 (guía MODIS §7.2.4) |
-| 5 | Escala: **equivalente MODIS (Aqua)** | La serie habla el idioma del registro más largo |
-| 6 | Método elegido: **Enfoque A** (grilla + celdas-día + factor por mes del año) | Simple, explicable y validable. B (regresión) y C (cuantiles) son plan B |
-| 7 | Validación con años separados (no circular) | Calibrar y validar con los mismos años "aprueba" por construcción |
-| 8 | Corte fijo a dic 2025, sin NRT | NRT ≠ estándar; mes en curso incompleto |
-| 9 | Stack: Python + pandas / JS vanilla + Leaflet + ECharts | Un solo desarrollador; mínimas dependencias |
-| 10 | Región propuesta: **Bolivia** [PENDIENTE confirmación] | Ver §2.1 |
+| 1 | Fuente base (2003–2025): CSV anuales por país de FIRMS (públicos, sin login) | Existen, son calidad estándar (no NRT) y traen el campo `type`. Descarga directa por script sin esperas |
+| 2 | Fuente 2026: formulario Archive Download de FIRMS (con cuenta ya creada) | Cubre ene–oct 2026 para S-NPP ("hasta hoy", antes del fin de misión de S-NPP el 2/11/2026) |
+| 3 | Pareja de satélites: **Aqua (MODIS) + S-NPP (VIIRS)** | Ambos cruzan el ecuador a la 1:30 p. m. (guías oficiales MODIS y VIIRS), eliminando sesgos por ciclo diurno |
+| 4 | Serie: **2003–2025 (estándar) + ene–oct 2026 (provisional)**, mensual | Aqua completo desde 2003; S-NPP hasta oct 2026; resolución mensual evita sesgos < 8 días (guía MODIS §7.1.1) |
+| 5 | Calibración: **2012–2021** (excluyendo 2020-08 y 2020-09 completos) | Inicio de S-NPP (2012) hasta inicio de deriva libre de Aqua (dic 2021). Se excluyen ago–sep 2020 por el apagón de Aqua (16 ago – 2 sep 2020) |
+| 6 | Reemplazo del apagón 2020 en la serie final | En 2020-08 y 2020-09 la serie armonizada usa `snpp_converted` para evitar una caída artificial en pleno pico de quemas |
+| 7 | Escala: **equivalente MODIS (Aqua)** en **celdas-día** | Habla el idioma del registro más largo y neutraliza tanto la diferencia de resolución como el solapamiento orbital |
+| 8 | Método: **Enfoque A** con salvaguarda de muestra mínima y validación en subregiones | Factor mensual con fallback al factor anual si un mes tiene pocas detecciones; validación en dos mitades (umbral ±15 %) y chequeo en 3 subregiones |
+| 9 | Optimización de tamaño y contrato (`DATA_CONTRACT.md` v3) | Grilla de **0,25°** por defecto (~27 km), sin repetir `lat`/`lon` en cada fila, garantizando un archivo ligero (< 5 MB) |
+| 10 | Región confirmada: **Bolivia** (Buffer **0 km**) | Temporada marcada, salto S-NPP/Aqua ~7×, volumen manejable |
 
 ## 1. Visión general
 
-Dos bloques que se comunican **solo a través de archivos de datos** definidos en `DATA_CONTRACT.md`:
+Dos bloques desacoplados que se comunican **únicamente mediante archivos estáticos** definidos en `DATA_CONTRACT.md`:
 
 ```
-[FIRMS: CSV anuales por país — Aqua MODIS + S-NPP VIIRS]
-        │  (descarga, sin login)
+[FIRMS Country CSV (2003–2025) + Archive Download (2026)]
+        │
         ▼
-[Pipeline Python / armonización]  → genera archivos agregados
-        │  (CSV/JSON estáticos)
+[Pipeline Python (`scripts/`)]  → filtra, agrega a celdas-día, calibra, valida y exporta
+        │  (`data/processed/monthly_cells.csv`, `metadata.json`, `validation.csv`)
         ▼
-[Aplicación web estática]  → mapa + selección de área + calendario + anomalías + descarga CSV
+[App Web Estática (`web/`)]     → mapa + AOI + calendario + anomalías + gráfico validación + CSV
 ```
-
-Idea clave: **el pipeline hace el trabajo pesado una vez** y la web solo lee datos ya agregados. Procesar millones de puntos en el navegador sería lento e inviable.
-
-**Equipo de software:** un solo desarrollador (con apoyo de agentes de IA). El resto del equipo puede apoyar en verificación de recursos, presentación y revisión del método.
 
 ## 2. Bloque A — Pipeline de datos y armonización
 
-### 2.1 Región 🔄 CAMBIO
+### 2.1 Región y obtención de datos
 
-**Propuesta: Bolivia (país completo). [PENDIENTE confirmación del equipo]**
+**Región: Bolivia (país completo, Buffer 0 km).**
 
-Razones (datos reales FIRMS 2019, puntos filtrados, solo ilustrativos):
-- Mucha actividad y temporada marcada (ago–sep concentran la mayoría de detecciones) → el calendario se ve claro.
-- El "salto" es grande: S-NPP detectó ~7 veces más puntos que Aqua → la armonización se nota.
-- Volumen manejable: ~38 MB/año de CSV crudo (ambos sensores) → < 1 GB para toda la serie; trivial para pandas.
-- Plan B más liviano: **Paraguay** (~15 MB/año).
+1. **Histórico 2003–2025 (automático por script):**
+   - MODIS (2003–2025): `https://firms.modaps.eosdis.nasa.gov/data/country/modis/<AÑO>/modis_<AÑO>_Bolivia.csv`
+   - VIIRS S-NPP (2012–2025): `https://firms.modaps.eosdis.nasa.gov/data/country/viirs-snpp/<AÑO>/viirs-snpp_<AÑO>_Bolivia.csv`
+2. ** Extensión 2026 (formulario FIRMS Archive Download):**
+   - En `https://firms.modaps.eosdis.nasa.gov/download/` pedir:
+     - **Area:** `Country` → `Bolivia`
+     - **Buffer:** `0 km` (para coincidir exactamente con el recorte de los CSV anuales de 2003–2025)
+     - **Fire Source:** `MODIS` y `VIIRS S-NPP` (opcional: añadir `VIIRS NOAA-20` si se desea explorar nov 2026)
+     - **Date Range:** `2026-01-01` a `2026-10-31`
+     - **Format:** `Comma-Separated Text (.csv)`
+   - Guardar en `data/raw/`. El pipeline funciona con 2003–2025 de inmediato y agrega 2026 automáticamente si los archivos están presentes.
 
-Hallazgo útil para el método: el cociente S-NPP/Aqua varía **entre países** (≈4,8 a 8,7 en 2019) y **entre meses** del mismo país (Bolivia ≈5,3 a 9,0). Un único factor global no sirve. *(Estos cocientes son de puntos crudos filtrados, no de celdas-día; el spike debe recalcularlos con el método real.)*
+### 2.2 Pasos del pipeline
 
-### 2.2 Pasos
-
-1. **Descargar** CSV anuales de FIRMS por país:
-   - `https://firms.modaps.eosdis.nasa.gov/data/country/modis/<AÑO>/modis_<AÑO>_<País>.csv` (Terra + Aqua; quedarse con `satellite == "Aqua"`)
-   - `https://firms.modaps.eosdis.nasa.gov/data/country/viirs-snpp/<AÑO>/viirs-snpp_<AÑO>_<País>.csv`
-2. **Limpiar y filtrar (H3)** 🔄 CAMBIO — umbrales definidos con fuentes oficiales:
-   - `type == 0` (presunto fuego de vegetación; descarta volcanes, fuentes estáticas y offshore).
-   - MODIS: `confidence >= 30` (nominal + alta; umbrales de la guía MODIS: baja < 30, nominal 30–80, alta ≥ 80).
-   - VIIRS: `confidence in {"n","h"}` (descarta baja; la guía VIIRS advierte falsas alarmas nocturnas de baja confianza sobre la Anomalía del Atlántico Sur, que cubre casi toda Sudamérica).
-3. **Agregar a grilla común (H1):** contar **celdas-día con al menos una detección**, por satélite, y sumar por mes. Un fuego visto como muchos píxeles VIIRS y pocos MODIS cuenta igual (1 por celda-día). **[PENDIENTE spike]** tamaño de celda (probar p. ej. 0,1° y 0,25° y elegir con qué factor queda más estable).
-4. **Calibrar (H2)** 🔄 CAMBIO — **Enfoque A**:
-   - En la ventana de calibración: `factor[mes] = Σ Aqua / Σ S-NPP` (celdas-día), por mes del año (1–12), para toda la región.
-   - Si un solo factor anual valida igual de bien que los 12 mensuales, usar el más simple.
-5. **Construir la serie armonizada (equivalente Aqua):**
-   - 2003–2021: Aqua (filtrado y agregado igual).
-   - 2022–2025: S-NPP × `factor[mes]` (Aqua ya está en deriva orbital).
-6. **Validar** 🔄 CAMBIO (ver §2.3).
-7. **Exportar** archivos según `DATA_CONTRACT.md`.
-8. **Documentar** método y límites en `docs/METODO.md`.
-
-### 2.3 Validación 🔄 CAMBIO
-
-- **Separar años:** calibrar con 2012–2016 y validar con 2017–2021 (y al revés, para comprobar estabilidad).
-- **Gráfico clave para el jurado** (años de validación): tres líneas — Aqua real, S-NPP crudo (el salto), S-NPP convertido (debe quedar sobre Aqua).
-- **Métricas simples:** diferencia % del total anual y error mensual medio. **[PENDIENTE]** fijar el umbral de éxito **antes** de ver los resultados.
-- **Evidencia extra:** comparar Aqua 2022–2025 contra S-NPP convertido; si divergen, muestra el efecto de la deriva de Aqua (argumento a favor del método).
-- **Chequeo de etiquetas de versión MODIS:** el campo `version` cambia (6.2 hasta 2017, 6.03 en 2018–2022, 61.03 desde 2023). Comprobar que no aparezca un escalón en ene 2018 ni en ene 2023 (la guía MODIS indica diferencias de solo 0,001 % entre C6 y C6.1).
-
-### 2.4 Enfoques alternativos (plan B)
-
-- **B. Regresión lineal** (Aqua = a + b·S-NPP): si el factor proporcional deja errores sistemáticos en meses de poco fuego.
-- **C. Emparejar distribuciones (quantile mapping):** si la relación es claramente no lineal. Más difícil de explicar.
+1. **Limpiar y filtrar (H3):**
+   - **MODIS:** `satellite == "Aqua"` y `confidence >= 30` (nominal y alta). Si la columna `type` está presente (archivos estándar ML), exigir `type == 0` (fuego de vegetación).
+   - **VIIRS S-NPP:** `confidence` en `{"n", "h", "nominal", "high"}` (minúsculas o mayúsculas). Si `type` está presente, exigir `type == 0`. *(Nota: en datos NRT de 2026 `type` no viene; la columna `source` los etiqueta como `snpp_converted_nrt`).*
+2. **Agregar a grilla común (H1):**
+   - Tamaño de celda base: **`cell_size = 0.25` grados** (~27,5 km; el script permite probar `0.10` como comparación).
+   - Índices enteros: `row = floor((lat + 90) / cell_size)`, `col = floor((lon + 180) / cell_size)`, `cell_id = f"{row}_{col}"`.
+   - Para cada `(cell_id, acq_date)` y sensor, contar **1 si hubo ≥ 1 detección ese día** (**celda-día activa**). Sumar las celdas-día de cada `(cell_id, year, month)`.
+3. **Calibrar (H2 — Enfoque A):**
+   - Ventana de calibración limpia: **feb 2012 – dic 2021** (meses completos; S-NPP inició el 20/01/2012), **excluyendo 2020-08 y 2020-09** por el apagón de Aqua.
+   - Para cada mes $m \in \{1..12\}$:
+     $$k_m = \frac{\sum_{y \in \text{cal}} \text{Aqua}_{y,m}}{\sum_{y \in \text{cal}} \text{SNPP}_{y,m}}$$
+   - **Salvaguarda de muestra mínima:** si en el mes $m$ la suma de celdas-día de Aqua en el periodo de calibración es $< 500$, se usa un factor suavizado/anual $k_{\text{global}} = \sum \text{Aqua} / \sum \text{SNPP}$ para evitar ruido por baja muestra en temporada de lluvias.
+4. **Validar (antes de fijar el factor final):**
+   - **Validación cruzada en 2 bloques:**
+     - Calibrar en **2012–2016** → evaluar en **2017–2021** (sin ago–sep 2020).
+     - Calibrar en **2017–2021** (sin ago–sep 2020) → evaluar en **2012–2016**.
+   - **Criterio de éxito fijado de antemano:** error relativo del total acumulado en el bloque de validación **$\le \pm 15\%$** y reducción de al menos **80 %** del sesgo crudo entre sensores.
+   - **Factor final de producción:** una vez superada la validación cruzada, los factores $k_m$ definitivos se calculan con todos los años válidos de **2012–2021**.
+   - **Validación espacial (subregiones):** evaluar el error con esos factores en 3 subregiones de Bolivia (Llanos/Chiquitanía: `lon > -64, lat > -19`; Amazonía/Beni Norte: `lat >= -14`; Andina/Valles: `lon <= -64`) y reportarlo en `metadata.json` y `docs/METODO.md`.
+5. **Construir la serie armonizada (`count_harmonized`):**
+   - **2003-01 a 2021-12** (excepto 2020-08 y 2020-09): `count_harmonized = count_raw_aqua` (`source = "aqua"`).
+   - **2020-08 y 2020-09** (apagón de Aqua): `count_harmonized = round(count_raw_snpp * k_m, 1)` (`source = "snpp_converted"`).
+   - **2022-01 a 2025-12** (era de deriva orbital de Aqua): `count_harmonized = round(count_raw_snpp * k_m, 1)` (`source = "snpp_converted"`).
+   - **2026-01 a 2026-10** (si hay datos 2026): `count_harmonized = round(count_raw_snpp * k_m, 1)` (`source = "snpp_converted_nrt"` si provienen de NRT, o `"snpp_converted"` si son estándar).
 
 ## 3. Bloque B — Aplicación web
 
-Responsable: el desarrollador (único).
+Componentes en `web/`:
+- **Mapa interactivo (Leaflet + Leaflet.draw):** muestra la grilla activa dentro del contorno de Bolivia, permite dibujar un rectángulo/polígono o elegir subregiones predefinidas, y advierte si el polígono sale de Bolivia o abarca muy pocas celdas (< 4 celdas).
+- **Calendario de actividad (ECharts heatmap):** matriz Año (2003–2026) × Mes (Ene–Dic) con rampa de color accesible (Viridis / YlOrRd) para el AOI seleccionado.
+- **Comparación histórica e indicadores:** compara el último mes seleccionado contra la **mediana y promedio histórico (2003–2025) de ese mismo mes calculados sobre la suma del AOI** (no sumando medianas por celda). Si la mediana es 0, muestra el promedio y el percentil 75.
+- ** Pestaña / Gráfico de Validación Científica:** muestra `validation.csv` con las tres curvas (Aqua real, S-NPP crudo con el salto de ~5–7×, y S-NPP armonizado superpuesto a Aqua) para demostrar visualmente ante el jurado que el salto desapareció.
+- **Descarga CSV:** exporta la serie mensual agregada del AOI (y/o las celdas-mes filtradas) respetando el contrato de datos.
 
-Componentes:
-- **Mapa** con selección de área de interés (rectángulo/polígono; opcional: lat/lon).
-- **Calendario de actividad:** mapa de calor mes × año con rampa de color accesible.
-- **Comparación histórica:** mes seleccionado vs. referencia histórica **del área seleccionada**; anomalías.
-- **Filtros:** rango de fechas.
-- **Exportación:** descarga de CSV de los conteos agregados consultados.
-- **Transparencia:** mostrar (o permitir activar) las series crudas de Aqua y S-NPP junto a la armonizada.
+## 4. Decisiones cerradas
 
-Stack 🔄 CAMBIO (decidido salvo objeción):
-- JavaScript vanilla (sin framework).
-- Mapa: Leaflet + Leaflet.draw.
-- Gráficos: ECharts.
-- Geometría en cliente (celdas dentro del polígono): Turf.js.
-- Hosting estático: GitHub Pages (o Vercel).
-
-Flujo en la app: el usuario dibuja un área → la app suma las celdas agregadas que caen dentro → calcula la referencia histórica de ese total → muestra calendario y estadísticas → permite descargar CSV.
-
-🔄 CAMBIO: la referencia histórica se calcula sobre el **total del área** (en el navegador, son pocos números), no sumando medianas por celda: la suma de medianas ≠ la mediana de la suma.
-
-## 4. Riesgos conocidos
-
-| Riesgo | Mitigación |
-|---|---|
-| Volumen de datos demasiado grande | Una región (país); agregar en el pipeline; servir archivos estáticos pequeños |
-| Armonización que "suena bien" pero no corrige el salto | Validación con años separados y umbral fijado de antemano |
-| Datos y web desincronizados | Contrato de datos fijo (`DATA_CONTRACT.md`) y datos de prueba desde el inicio |
-| Acceso a FIRMS | 🔄 Mitigado: CSV anuales por país públicos (verificado). Plan B: descarga del archivo histórico con Earthdata Login |
-| Deriva orbital de Aqua (desde dic 2021) | 🔄 Calibrar solo hasta dic 2021; usar S-NPP convertido desde 2022 |
-| Mezclar satélites crea saltos nuevos (NOAA-20/21, Terra) | 🔄 Usar solo la pareja Aqua + S-NPP |
-| Ausencia de puntos ≠ ausencia de fuego (nubes, cobertura) | Documentar como limitación en `docs/METODO.md` (guía MODIS §7.1.1) |
-| Mediana histórica = 0 en zonas con poco fuego | Mostrar también promedio/percentiles; avisar cuando la referencia sea 0 |
-| Un solo desarrollador, poco tiempo | Alcance mínimo; agentes de IA con revisión cruzada; resto del equipo en presentación y validación |
-
-## 5. Decisiones
-
-- [x] Fuente de datos: CSV anuales por país de FIRMS
-- [x] Satélites: Aqua + S-NPP
-- [x] Escala: equivalente MODIS (Aqua)
-- [x] Resolución temporal: mensual
-- [x] Periodo: 2003–2025; calibración 2012–2021 (sin 16/08–02/09/2020)
-- [x] Método: Enfoque A (B y C como plan B)
-- [x] CSV descargable: conteos agregados (no puntos crudos)
-- [x] Stack web: JS vanilla + Leaflet + ECharts + Turf.js, hosting estático
-- [ ] Región: propuesta Bolivia — **[PENDIENTE confirmación]**
-- [ ] Tamaño de celda — **[PENDIENTE spike]**
-- [ ] Umbral de éxito de la validación — **[PENDIENTE, fijar antes del spike]**
-- [ ] Revisar recursos oficiales del reto (13/11) por si exigen otra cosa
-
-## 6. Límites conocidos (fuera de alcance del prototipo)
-
-- S-NPP dejó de entregar datos el 2/11/2026. Extender la serie más allá exigiría enlazar NOAA-20 con S-NPP (traslape 2018–2026).
-- Terra (2000–2002) no se incluye; la serie empieza en 2003.
-- Los archivos de puntos no traen información de nubes ni de cobertura; los productos Level 2G sí, pero son más complejos (la FAQ de FIRMS los recomienda para análisis cuantitativo).
+- [x] **Región:** Bolivia (Buffer 0 km).
+- [x] **Formulario Archive Download (2026):** Country = Bolivia, Buffer = 0 km, Sources = MODIS + VIIRS S-NPP, Dates = 2026-01-01 a 2026-10-31, Format = CSV.
+- [x] **Satélites:** Aqua (MODIS) + S-NPP (VIIRS).
+- [x] **Grilla por defecto:** 0,25° (con soporte parametrizable para 0,10°).
+- [x] **Umbral de validación:** $\le \pm 15\%$ de error en el total del periodo de prueba.
+- [x] **Manejo del apagón de Aqua (ago–sep 2020):** excluido de calibración y sustituido por S-NPP armonizado en la serie final.

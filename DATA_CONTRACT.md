@@ -1,102 +1,115 @@
-# DATA_CONTRACT.md — Contrato de datos (BORRADOR v2)
+# DATA_CONTRACT.md — Contrato de datos (DEFINITIVO v3)
 
-> Es el acuerdo entre el pipeline (que produce) y la web (que consume). **Una vez acordado, no se cambia sin avisar.** Mientras tanto, la web se desarrolla con datos de prueba que respeten este formato.
-> **🔄 CAMBIO** marca lo que cambió respecto al v1 y por qué. Los nombres de columnas de entrada ya están **verificados en archivos reales de FIRMS** (13/11/2026).
+> Acuerdo fijo entre el pipeline de datos (`scripts/`) y la aplicación web (`web/`). **No cambiar nombres de columnas ni tipos sin actualizar ambos bloques.**
 
-## 1. Entrada cruda 🔄 CAMBIO (verificada)
+## 1. Entrada cruda (`data/raw/`)
 
-Fuente: CSV anuales por país de FIRMS (públicos, calidad estándar, no NRT).
+### 1.1 Histórico 2003–2025 (CSV anuales públicos por país de FIRMS)
+- **MODIS (`modis_<AÑO>_Bolivia.csv`, 2003–2025):**
+  `latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_t31,frp,daynight,type`
+- **VIIRS S-NPP (`viirs-snpp_<AÑO>_Bolivia.csv`, 2012–2025):**
+  `latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight,type`
 
-**MODIS** (`modis_<AÑO>_<País>.csv`):
-`latitude, longitude, brightness, scan, track, acq_date, acq_time, satellite, instrument, confidence, version, bright_t31, frp, daynight, type`
+### 1.2 Extensión 2026 (FIRMS Archive Download, cuenta Earthdata)
+Archivos CSV descargados del formulario con **Country = Bolivia, Buffer = 0 km, Dates = 2026-01-01 a 2026-10-31, Format = CSV**.
+- Nota importante: para los meses de 2026 que aún estén en procesamiento NRT (`version` con sufijo `NRT`), FIRMS **no incluye la columna `type`**. El pipeline debe verificar si la columna `type` existe: si existe, filtra `type == 0`; si no existe (NRT), aplica los filtros de satélite y confianza y marca `source = "snpp_converted_nrt"`.
 
-**VIIRS S-NPP** (`viirs-snpp_<AÑO>_<País>.csv`):
-`latitude, longitude, bright_ti4, scan, track, acq_date, acq_time, satellite, instrument, confidence, version, bright_ti5, frp, daynight, type`
+### 1.3 Reglas de filtrado de entrada
+- **MODIS:** `satellite == "Aqua"`, `int(confidence) >= 30`, y (si existe `type`) `int(type) == 0`.
+- **VIIRS S-NPP:** `confidence.lower() in {"n", "h", "nominal", "high"}`, y (si existe `type`) `int(type) == 0`.
 
-Detalles comprobados (difieren de parte de la documentación):
+---
 
-| Campo | MODIS | VIIRS S-NPP |
-|---|---|---|
-| `satellite` | `Aqua` / `Terra` (palabra completa) | `N` |
-| `confidence` | entero 0–100 | `l` / `n` / `h` (minúsculas) |
-| `acq_date` | `YYYY-MM-DD` | `YYYY-MM-DD` |
-| `acq_time` | HHMM en **UTC** | HHMM en **UTC** |
-| `type` | 0 vegetación, 1 volcán, 2 estática, 3 offshore | igual |
-| `version` | varía por año (6.2 / 6.03 / 61.03) | `2` |
-
-Filtros que aplica el pipeline: `type == 0`; MODIS `satellite == "Aqua"` y `confidence >= 30`; VIIRS `confidence in {n, h}`.
-
-**Nota sobre fechas:** el mes se asigna por `acq_date` en UTC. En Bolivia (UTC−4) las pasadas nominales de Aqua/S-NPP (~13:30 y ~01:30 hora local) equivalen a ~17:30 y ~05:30 UTC del **mismo día**, así que la fecha UTC coincide con la local. Las pasadas alejadas del nadir pueden variar algo de hora, pero el efecto en totales **mensuales** es despreciable. Se documenta en `docs/METODO.md`.
-
-## 2. Salida del pipeline (lo que consume la web)
+## 2. Salida del pipeline (`data/processed/`)
 
 ### 2.1 Archivo principal: `monthly_cells.csv`
 
-**Una fila por celda y mes**, solo para celdas-mes con al menos una detección de algún sensor (archivo disperso; ver reglas de faltantes en §4).
+Una fila por celda y mes con al menos una detección en cualquiera de los dos sensores. Para mantener el archivo por debajo de **5 MB sin comprimir**, no se repiten `lat`/`lon` en cada fila (la web calcula el centro de la celda a partir de `cell_id` y `cell_size_deg`).
 
 | Campo | Tipo | Descripción |
 |---|---|---|
-| `cell_id` | texto | 🔄 Regla: `"<fila>_<col>"` con `fila = floor((lat + 90) / cell_size)` y `col = floor((lon + 180) / cell_size)` |
-| `lat` | número | Latitud del centro de la celda |
-| `lon` | número | Longitud del centro de la celda |
-| `year` | entero | Año (2003–2025) |
-| `month` | entero (1–12) | Mes |
-| `count_harmonized` | número (decimal, 2 decimales) | 🔄 **Celdas-día con fuego en equivalente Aqua.** 2003–2021 = valor Aqua; 2022–2025 = S-NPP × factor del mes. Es decimal porque proviene de un factor; se lee como "celdas-día equivalentes" |
-| `count_raw_aqua` | entero o vacío | 🔄 (antes `count_raw_modis`) Celdas-día con detección Aqua. Vacío si no hay dato del sensor |
-| `count_raw_snpp` | entero o vacío | 🔄 (antes `count_raw_viirs`) Celdas-día con detección S-NPP. **Vacío antes de 2012** (el sensor no existía) |
-| `source` | texto | 🔄 Nuevo: `aqua` o `snpp_converted`, según qué alimentó `count_harmonized` |
+| `cell_id` | texto | `"<row>_<col>"` donde `row = floor((lat + 90) / cell_size_deg)` y `col = floor((lon + 180) / cell_size_deg)`. El centro es `lat = (row + 0.5) * cell_size_deg - 90`, `lon = (col + 0.5) * cell_size_deg - 180` |
+| `year` | entero | Año (`2003` a `2026`) |
+| `month` | entero | Mes (`1` a `12`) |
+| `count_harmonized` | decimal (1 dec) | **Celdas-día con fuego en equivalente Aqua.** Entero cuando proviene de Aqua; decimal redondeado a 1 decimal cuando proviene de S-NPP × `factor[month]` |
+| `count_raw_aqua` | entero o vacío | Celdas-día con detección Aqua en ese mes. Vacío (`""`) si Aqua no tiene cobertura válida |
+| `count_raw_snpp` | entero o vacío | Celdas-día con detección S-NPP en ese mes. **Vacío (`""`) antes de 2012-01** y después de 2026-10 |
+| `source` | texto | `"aqua"`, `"snpp_converted"` o `"snpp_converted_nrt"` |
 
-🔄 Unidad: **celdas-día**, no puntos. Por qué: un mismo fuego genera más puntos VIIRS que MODIS; contar "¿hubo fuego en esta celda este día?" reduce ese efecto (H1).
+### 2.2 Archivo de validación regional: `validation.csv`
 
-**[PENDIENTE spike]** `cell_size` (candidatos 0,1° y 0,25°).
+Serie mensual agregada de toda la región (2003–2026) para graficar la serie completa y la validación del traslape en la web sin recorrer todas las celdas:
 
-### 2.2 Archivo de metadatos: `metadata.json`
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `year` | entero | Año (`2003` a `2026`) |
+| `month` | entero | Mes (`1` a `12`) |
+| `harmonized` | decimal (1 dec) | Suma regional de `count_harmonized` |
+| `aqua` | entero o vacío | Suma regional de celdas-día Aqua |
+| `snpp_raw` | entero o vacío | Suma regional de celdas-día S-NPP sin escalar |
+| `snpp_converted` | decimal o vacío | `snpp_raw * factor[month]` (calculado en todos los meses desde 2012 para comparar contra `aqua`) |
+| `split` | texto | `"pre_viirs"` (2003–2011), `"partial_start"` (2012-01), `"calibration_a"` (2012-02 a 2016-12), `"calibration_b"` (2017-01 a 2021-12 sin apagón), `"excluded_outage"` (2020-08 y 2020-09), `"drift"` (2022–2025), `"provisional_2026"` (2026) |
+
+### 2.3 Archivo de metadatos: `metadata.json`
 
 ```json
 {
-  "region": "Bolivia [PENDIENTE confirmación]",
-  "bbox": [0, 0, 0, 0],
-  "cell_size_deg": "[PENDIENTE spike]",
+  "region": "Bolivia",
+  "bbox": [-69.65, -22.90, -57.45, -9.68],
+  "cell_size_deg": 0.25,
   "temporal_resolution": "monthly",
   "date_range": ["2003-01", "2025-12"],
-  "unit": "cell-days with fire (Aqua-equivalent)",
-  "sensors": {"reference": "MODIS Aqua", "converted": "VIIRS S-NPP 375 m"},
-  "calibration_period": ["2012-01", "2021-12"],
-  "calibration_excluded": ["2020-08-16/2020-09-02"],
+  "provisional_range": ["2026-01", "2026-10"],
+  "baseline_years": [2003, 2025],
+  "unit": "celdas-día con fuego (equivalente MODIS Aqua)",
+  "sensors": {
+    "reference": "MODIS Aqua (MYD14 / MCD14ML)",
+    "converted": "VIIRS Suomi-NPP 375 m (VNP14IMGML)"
+  },
+  "sensor_coverage": {
+    "aqua": ["2003-01", "2025-12"],
+    "snpp": ["2012-02", "2026-10"]
+  },
+  "calibration_period": ["2012-02", "2021-12"],
+  "excluded_months": ["2012-01", "2020-08", "2020-09"],
   "harmonized_source_switch": "2022-01",
-  "factors_by_month": {"1": null, "2": null, "...": null, "12": null},
-  "filters": {"type": [0], "modis_confidence_min": 30, "viirs_confidence": ["n", "h"]},
-  "data_source": "NASA FIRMS country yearly CSV (standard quality)",
-  "method": "Ver docs/METODO.md",
-  "generated_on": "YYYY-MM-DD"
+  "factors_by_month": {
+    "1": 0.0, "2": 0.0, "3": 0.0, "4": 0.0, "5": 0.0, "6": 0.0,
+    "7": 0.0, "8": 0.0, "9": 0.0, "10": 0.0, "11": 0.0, "12": 0.0
+  },
+  "factor_annual_fallback": 0.0,
+  "validation_metrics": {
+    "threshold_pct": 15.0,
+    "train_2012_2016_test_2017_2021": {
+      "raw_bias_pct": 0.0,
+      "harmonized_bias_pct": 0.0,
+      "mae_monthly": 0.0
+    },
+    "train_2017_2021_test_2012_2016": {
+      "raw_bias_pct": 0.0,
+      "harmonized_bias_pct": 0.0,
+      "mae_monthly": 0.0
+    },
+    "subregions_2012_2021": {
+      "chiquitania_llanos": {"harmonized_bias_pct": 0.0},
+      "amazonia_beni_norte": {"harmonized_bias_pct": 0.0},
+      "andina_valles": {"harmonized_bias_pct": 0.0}
+    }
+  },
+  "filters": {
+    "type": [0],
+    "modis_satellite": "Aqua",
+    "modis_confidence_min": 30,
+    "viirs_confidence": ["n", "h"]
+  },
+  "generated_on": "2026-11-13"
 }
 ```
 
-🔄 Se agregan `unit`, `sensors`, periodo de calibración, factores y filtros para que la web pueda **mostrar el método** (transparencia ante el jurado).
+## 3. Reglas de interpretación en la web
 
-### 2.3 Archivo de validación: `validation.csv` 🔄 Nuevo
-
-Serie mensual **de toda la región** para el gráfico antes/después.
-
-| Campo | Descripción |
-|---|---|
-| `year`, `month` | Periodo (2012–2025) |
-| `aqua` | Celdas-día Aqua (región completa) |
-| `snpp_raw` | Celdas-día S-NPP sin convertir |
-| `snpp_converted` | S-NPP × factor del mes |
-| `split` | `calibration`, `validation`, `drift` (2022+) o `excluded` |
-
-### 2.4 Referencia histórica 🔄 CAMBIO
-
-Se **elimina** el archivo opcional `median_hist` por celda: la mediana del área seleccionada no se puede obtener sumando medianas de celdas. La web calcula la referencia histórica (mediana, promedio y percentiles) sobre el **total del área seleccionada**, a partir de `monthly_cells.csv` (son ≤ 276 valores por área).
-
-## 3. Datos de prueba (para que la web arranque ya)
-
-El pipeline entrega cuanto antes `monthly_cells.csv` + `metadata.json` con este formato para una zona pequeña y pocos años, aunque los valores aún no estén armonizados. La web se construye contra eso.
-
-## 4. Reglas
-
-- Los nombres de campos y tipos de arriba no cambian sin aviso.
-- 🔄 Faltantes: en `monthly_cells.csv`, **una celda-mes ausente significa 0 detecciones** (archivo disperso). Dentro de una fila, **vacío = sin dato del sensor** (p. ej. S-NPP antes de 2012) y `0` = el sensor operaba y no detectó.
-- Fechas siempre numéricas (`year`, `month`).
-- 🔄 Tamaño objetivo: `monthly_cells.csv` ≤ ~5 MB sin comprimir (GitHub Pages lo sirve comprimido). Si se excede, aumentar `cell_size` o dividir por década. **[Revisar tras el spike]**
+1. **Celdas ausentes:** dentro del rango válido de un sensor (`sensor_coverage`), una celda-mes que no aparece en `monthly_cells.csv` vale `0`. Fuera de `sensor_coverage` (p. ej. S-NPP antes de 2012), vale `null` (sin dato).
+2. **Cálculo de la mediana histórica del AOI:**
+   - Para el conjunto de celdas seleccionadas por el usuario y cada mes $m \in \{1..12\}$, primero se **suma** `count_harmonized` sobre las celdas seleccionadas para cada año base $y \in [2003, 2025]$, obteniendo $S_{y,m}$ (si en un año ninguna celda seleccionada tuvo fuego en el mes $m$, $S_{y,m} = 0$).
+   - Luego se calcula la **mediana**, el **promedio** y el **percentil 75** de $\{S_{2003,m}, \dots, S_{2025,m}\}$.
+3. **Aviso de muestra baja / borde:** si el AOI seleccionado contiene $< 4$ celdas activas históricas o se extiende fuera de `bbox`, la interfaz muestra una advertencia de mayor incertidumbre.
