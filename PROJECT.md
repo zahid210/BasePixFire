@@ -49,9 +49,9 @@ Respondedores de emergencias y alerta temprana, científicos, gestores de tierra
 ## 5. Datos
 
 - **Fuente sugerida por el reto:** NASA Earthdata **FIRMS** (hotspots de MODIS y VIIRS).
-- **Recursos oficiales:** se publican el viernes 13/11. **[PENDIENTE: pegar aquí el listado de recursos, enlaces, formatos y límites de acceso]**
-- **[PENDIENTE]** ¿Hace falta cuenta o clave (MAP_KEY) para descargar? ¿Hay límites de tamaño o frecuencia?
-- **[PENDIENTE]** Región(es) de trabajo para el prototipo (el volumen global es enorme; ver ARCHITECTURE.md).
+- **Recursos oficiales (publicados 13/11):** un único recurso NASA: **FIRMS** — https://www.earthdata.nasa.gov/data/tools/firms. Aviso del reto: para sitios no gubernamentales de EE. UU. hay que respetar sus condiciones de uso de datos.
+- **Acceso (verificado 12–13/11):** los CSV anuales por país de FIRMS son públicos y sin login (calidad estándar, hasta 2025). El archivo histórico a medida requiere Earthdata Login o código por correo. MAP_KEY solo hace falta para la API/servicios de mapas (límite 5000 transacciones / 10 min). Ver `ARCHITECTURE.md` §0.
+- **Región de trabajo:** propuesta **Bolivia** **[PENDIENTE confirmación]** (ver `ARCHITECTURE.md` §2.1).
 
 ## 6. Restricciones
 
