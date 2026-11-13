@@ -19,9 +19,9 @@ const MONTH_FULL_NAMES = [
 ];
 
 const COLOR_RAMPS = {
-  fire: ["#0b1320", "#1e3a5f", "#b45309", "#f97316", "#fde047"],
-  viridis: ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"],
-  plasma: ["#0d0887", "#7e03a8", "#cc4778", "#f89540", "#f0f921"]
+  fire: ["#fff7ed", "#fed7aa", "#fb923c", "#ea580c", "#b91c1c", "#7c2d12"],
+  viridis: ["#edf8fb", "#b2e2e2", "#66c2a4", "#2ca25f", "#006d2c"],
+  plasma: ["#f0f921", "#f89540", "#cc4778", "#7e03a8", "#0d0887"]
 };
 
 const STAGE_META = {
@@ -156,7 +156,7 @@ function initMap() {
 
   const CARTO_KEY = "cb1_58lv_1_5016ded4d19a88b491106fc0";
 
-  const cartoDark = L.tileLayer(`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
+  const cartoPositron = L.tileLayer(`https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
     attribution: "&copy; OpenStreetMap &copy; CARTO | NASA FIRMS",
     subdomains: "abcd",
     maxZoom: 19
@@ -173,10 +173,10 @@ function initMap() {
     maxZoom: 18
   });
 
-  cartoDark.addTo(map);
+  cartoPositron.addTo(map);
 
   const baseMaps = {
-    "Carto Dark Matter": cartoDark,
+    "Carto Positron (Claro)": cartoPositron,
     "Carto Voyager": cartoVoyager,
     "Satélite Esri": satLayer
   };
@@ -228,10 +228,10 @@ function initMap() {
 }
 
 function getDensityColor(annualAvg) {
-  if (annualAvg > 25) return "#ef4444";
-  if (annualAvg > 10) return "#f97316";
-  if (annualAvg > 2) return "#fbbf24";
-  return "#38bdf8";
+  if (annualAvg > 25) return "#b91c1c";
+  if (annualAvg > 10) return "#ea580c";
+  if (annualAvg > 2) return "#fb923c";
+  return "#0284c7";
 }
 
 function renderMapGrid() {
@@ -251,10 +251,10 @@ function renderMapGrid() {
     ];
 
     const rect = L.rectangle(bounds, {
-      color: isSelected ? fillColor : "#1e293b",
-      weight: isSelected ? 0.5 : 0.15,
+      color: isSelected ? fillColor : "#cbd5e1",
+      weight: isSelected ? 0.75 : 0.25,
       fillColor: fillColor,
-      fillOpacity: isSelected ? 0.65 : 0.1
+      fillOpacity: isSelected ? 0.6 : 0.12
     });
 
     rect.bindTooltip(
@@ -451,15 +451,22 @@ function updateTelemetryCard(histStats) {
       const pct = (diff / mStat.median) * 100.0;
       const sign = diff >= 0 ? "+" : "";
       anomEl.textContent = `${sign}${pct.toFixed(1)} %`;
-      anomEl.style.color = diff > 0 ? "#fbbf24" : "#7ff0e8";
-      anomTxt.textContent = `${sign}${diff.toFixed(1)} celdas-día frente a la mediana de ${MONTH_NAMES[state.focusMonth - 1]}`;
+      anomEl.style.color = diff > 0 ? "#c2410c" : "#0f766e";
+      anomTxt.textContent = `${sign}${diff.toFixed(1)} celdas-día frente a la mediana histórica`;
     } else {
       const diffMean = currVal - mStat.mean;
       const sign = diffMean >= 0 ? "+" : "";
       anomEl.textContent = `${sign}${diffMean.toFixed(1)}`;
-      anomEl.style.color = diffMean > 0 ? "#fbbf24" : "#7ff0e8";
+      anomEl.style.color = diffMean > 0 ? "#c2410c" : "#0f766e";
       anomTxt.textContent = `Mediana = 0; diferencia vs. promedio (${mStat.mean.toFixed(1)})`;
     }
+  }
+
+  // Actualizar marcador del gauge visual
+  const markerEl = document.querySelector(".gauge-median-marker");
+  if (markerEl && mStat.p75 > 0) {
+    const pos = Math.min(95, Math.max(5, (currVal / (mStat.p75 * 1.6)) * 100));
+    markerEl.style.left = `${pos}%`;
   }
 
   const factorEl = document.getElementById("msFactorVal");
@@ -542,13 +549,13 @@ function renderCalendarChart() {
   const ramp = COLOR_RAMPS[state.colorRamp] || COLOR_RAMPS.fire;
 
   const option = {
-    backgroundColor: "transparent",
+    backgroundColor: "#ffffff",
     tooltip: {
       position: "top",
-      backgroundColor: "rgba(9, 14, 23, 0.94)",
-      borderColor: "rgba(127, 240, 232, 0.4)",
+      backgroundColor: "rgba(15, 23, 42, 0.96)",
+      borderColor: "#e2e8f0",
       borderWidth: 1,
-      textStyle: { color: "#f3f7fb", fontFamily: "Sora, sans-serif", fontSize: 11 },
+      textStyle: { color: "#ffffff", fontFamily: "Sora, sans-serif", fontSize: 11 },
       formatter: (p) => {
         const mName = MONTH_NAMES[p.value[0]];
         const year = years[p.value[1]];
@@ -562,32 +569,32 @@ function renderCalendarChart() {
               ? "VIIRS S-NPP (NRT provisional)"
               : "VIIRS S-NPP (armonizado)";
         return `
-          <div style="font-weight:600;margin-bottom:3px">${mName} ${year}</div>
+          <div style="font-weight:700;margin-bottom:3px">${mName} ${year}</div>
           <div>Actividad: <b>${val.toLocaleString("es-BO")}</b> celdas-día eq. Aqua</div>
           <div style="color:#94a3b8;font-size:10px;margin-top:2px">Fuente: ${srcText}</div>
         `;
       }
     },
     grid: {
-      top: 25,
-      bottom: 45,
-      left: 55,
-      right: 25
+      top: 15,
+      bottom: 40,
+      left: 50,
+      right: 20
     },
     xAxis: {
       type: "category",
       data: MONTH_NAMES,
       splitArea: { show: false },
-      axisLine: { lineStyle: { color: "rgba(255,255,255,0.12)" } },
-      axisLabel: { color: "#94a3b8", fontSize: 11, fontFamily: "Sora" },
+      axisLine: { lineStyle: { color: "#e2e8f0" } },
+      axisLabel: { color: "#475569", fontSize: 11, fontFamily: "Sora" },
       axisTick: { show: false }
     },
     yAxis: {
       type: "category",
       data: years,
       splitArea: { show: false },
-      axisLine: { lineStyle: { color: "rgba(255,255,255,0.12)" } },
-      axisLabel: { color: "#cbd5e1", fontSize: 10.5, fontFamily: "Sora" },
+      axisLine: { lineStyle: { color: "#e2e8f0" } },
+      axisLabel: { color: "#0f172a", fontSize: 11, fontFamily: "Sora", fontWeight: 600 },
       axisTick: { show: false }
     },
     visualMap: {
@@ -596,9 +603,9 @@ function renderCalendarChart() {
       calculable: true,
       orient: "horizontal",
       left: "center",
-      bottom: 2,
+      bottom: 0,
       inRange: { color: ramp },
-      textStyle: { color: "#94a3b8", fontSize: 9.5, fontFamily: "Sora" }
+      textStyle: { color: "#64748b", fontSize: 10, fontFamily: "Sora" }
     },
     series: [
       {
@@ -608,14 +615,14 @@ function renderCalendarChart() {
         label: { show: false },
         itemStyle: {
           borderWidth: 1,
-          borderColor: "rgba(4, 7, 11, 0.75)",
-          borderRadius: 2
+          borderColor: "#ffffff",
+          borderRadius: 0
         },
         emphasis: {
           itemStyle: {
-            shadowBlur: 10,
-            shadowColor: "rgba(127, 240, 232, 0.8)",
-            borderColor: "#7ff0e8",
+            shadowBlur: 8,
+            shadowColor: "rgba(15, 23, 42, 0.35)",
+            borderColor: "#0f172a",
             borderWidth: 1.5
           }
         }
