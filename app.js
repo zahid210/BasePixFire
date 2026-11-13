@@ -121,9 +121,31 @@ function initMap() {
     maxZoom: 10
   });
 
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    attribution: '&copy; OpenStreetMap &copy; CARTO | Datos: NASA FIRMS'
-  }).addTo(map);
+  const darkLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+    attribution: '&copy; OpenStreetMap &copy; CARTO | Datos: NASA FIRMS',
+    subdomains: 'abcd',
+    maxZoom: 19
+  });
+
+  const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; OpenStreetMap contributors | Datos: NASA FIRMS',
+    maxZoom: 19
+  });
+
+  const satLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community | Datos: NASA FIRMS',
+    maxZoom: 18
+  });
+
+  darkLayer.addTo(map);
+
+  const baseMaps = {
+    "Mapa Claro (Carto/OSM)": darkLayer,
+    "OpenStreetMap Estándar": osmLayer,
+    "Satélite (Esri World Imagery)": satLayer
+  };
+
+  L.control.layers(baseMaps, null, { position: "topleft" }).addTo(map);
 
   gridLayerGroup = L.layerGroup().addTo(map);
   drawnItems = new L.FeatureGroup().addTo(map);
