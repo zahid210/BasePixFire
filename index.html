@@ -1,248 +1,416 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PixFire Bolivia — Armonización MODIS &amp; VIIRS (2003–2026)</title>
 
-  <!-- Leaflet & Leaflet.draw -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <!-- Tipografía geométrica moderna: Sora (Google Fonts) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 
-  <!-- Estilos propios -->
+  <!-- Leaflet v1.9.4 & Leaflet.draw v1.0.4 -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw@1.0.4/leaflet.draw.css" />
+
+  <!-- Hoja de estilos principal (Filosofía Glassmorphism Cinematográfico) -->
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Encabezado principal -->
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-badge">NASA Space Apps 2026</span>
-      <div>
-        <h1>PixFire — Serie Armonizada MODIS &amp; VIIRS</h1>
-        <p class="subtitle">Calendario de actividad de quema y anomalías (Bolivia, 2003–2026 · Grilla 0,25° en celdas-día equivalentes Aqua)</p>
-      </div>
-    </div>
-    <div class="topbar-actions">
-      <button id="btnDownloadSeries" class="btn btn-primary" title="Descargar serie mensual del área seleccionada en CSV">
-        ⬇ Descargar CSV (Serie AOI)
-      </button>
-      <button id="btnDownloadCells" class="btn btn-secondary" title="Descargar celdas-mes detalladas dentro del área y rango de años">
-        ⬇ CSV Celdas-Mes
-      </button>
-    </div>
-  </header>
+  <!-- Definición de iconos vectoriales SVG limpios -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="ic-download" viewBox="0 0 24 24">
+        <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+      </symbol>
+      <symbol id="ic-table" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M3 10h18M9 10v10M15 10v10" />
+      </symbol>
+      <symbol id="ic-reset" viewBox="0 0 24 24">
+        <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8" />
+        <path d="M3 3v5h5" />
+      </symbol>
+      <symbol id="ic-layers" viewBox="0 0 24 24">
+        <polygon points="12 2 2 7 12 12 22 7 12 2" />
+        <polyline points="2 17 12 22 22 17" />
+        <polyline points="2 12 12 17 22 12" />
+      </symbol>
+      <symbol id="ic-arrow-up-right" viewBox="0 0 24 24">
+        <path d="M7 17L17 7M8 7h9v9" />
+      </symbol>
+      <symbol id="ic-check" viewBox="0 0 24 24">
+        <polyline points="20 6 9 17 4 12" />
+      </symbol>
+      <symbol id="ic-alert" viewBox="0 0 24 24">
+        <path d="M12 3l10 18H2zM12 10v4M12 17h.01" />
+      </symbol>
+    </defs>
+  </svg>
 
-  <!-- Barra de controles globales -->
-  <section class="controls-bar">
-    <div class="control-group">
-      <label for="presetRegion">Región / AOI rápido:</label>
-      <select id="presetRegion">
-        <option value="all" selected>Toda Bolivia (país completo)</option>
-        <option value="chiquitania">Chiquitanía y Llanos Orientales</option>
-        <option value="amazonia">Amazonía y Beni Norte</option>
-        <option value="andina">Región Andina y Valles</option>
-        <option value="custom" disabled>Polígono / BBox personalizado</option>
-      </select>
-    </div>
-
-    <div class="control-group bbox-inputs">
-      <label>BBox (Lat/Lon):</label>
-      <input type="number" id="inLatMin" step="0.25" placeholder="Lat S (-22.9)" title="Latitud mínima (Sur)" />
-      <input type="number" id="inLatMax" step="0.25" placeholder="Lat N (-9.7)" title="Latitud máxima (Norte)" />
-      <input type="number" id="inLonMin" step="0.25" placeholder="Lon W (-69.6)" title="Longitud mínima (Oeste)" />
-      <input type="number" id="inLonMax" step="0.25" placeholder="Lon E (-57.5)" title="Longitud máxima (Este)" />
-      <button id="btnApplyBbox" class="btn btn-sm">Aplicar</button>
-      <button id="btnResetAoi" class="btn btn-sm btn-ghost">Restablecer</button>
-    </div>
-
-    <div class="control-group">
-      <label>Rango de años:</label>
-      <select id="yearStart"></select>
-      <span>a</span>
-      <select id="yearEnd"></select>
-    </div>
-
-    <div class="control-group">
-      <label for="colorRamp">Rampa accesible:</label>
-      <select id="colorRamp">
-        <option value="viridis" selected>Viridis (daltónicos / accesible)</option>
-        <option value="ylorrd">YlOrRd (Amarillo-Naranja-Rojo)</option>
-        <option value="plasma">Plasma (Alto contraste)</option>
-      </select>
-    </div>
-  </section>
-
-  <!-- Aviso dinámico de incertidumbre (AOI pequeño, fuera de frontera o datos NRT) -->
-  <div id="aoiWarning" class="alert-banner hidden"></div>
-
-  <!-- Contenedor principal: Mapa a la izquierda + Paneles de análisis a la derecha -->
-  <main class="dashboard">
-    <!-- Columna izquierda: Mapa interactivo -->
-    <aside class="map-panel card">
-      <div class="card-header">
+  <div class="app-shell">
+    <!-- Cabecera superior con navegación centrada en píldora y herramientas circulares -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo-dot" aria-hidden="true"></span>
         <div>
-          <h2>1. Área de Interés (AOI)</h2>
-          <p class="hint">Dibuja un rectángulo/polígono con los botones del mapa o elige una región arriba.</p>
-        </div>
-        <span id="aoiStatsBadge" class="badge">Cargando celdas...</span>
-      </div>
-      <div id="map" class="map-container"></div>
-      <div class="map-footer">
-        <div class="map-legend">
-          <span>Densidad media anual (celdas-día/año):</span>
-          <div class="legend-scale">
-            <span class="swatch" style="background:#3b528b"></span> Baja
-            <span class="swatch" style="background:#21918c"></span> Media
-            <span class="swatch" style="background:#5ec962"></span> Alta
-            <span class="swatch" style="background:#fde725"></span> Muy alta
-            <span class="swatch" style="background:#ef4444"></span> Extrema
-          </div>
-        </div>
-        <p class="footnote">
-          Cobertura: Bolivia (Buffer 0 km). Celdas de 0,25° (~27,5 km). Reconocimiento oficial: <em>We acknowledge the use of data and/or imagery from NASA's Fire Information for Resource Management System (FIRMS) (<a href="https://www.earthdata.nasa.gov/data/tools/firms" target="_blank" rel="noopener" style="color:#38bdf8">earthdata.nasa.gov/firms</a>), part of NASA's Earth Science Data and Information System (ESDIS).</em> <a href="REFERENCES.md" target="_blank" style="color:#38bdf8">Ver todas las referencias y licencias</a>.
-        </p>
-      </div>
-    </aside>
-
-    <!-- Columna derecha: Tarjetas KPI + Pestañas -->
-    <section class="analysis-panel">
-      <!-- Tarjetas de indicadores clave (KPIs) -->
-      <div class="kpi-grid">
-        <div class="kpi-card card">
-          <div class="kpi-title">
-            <span>Mes evaluado vs. Histórico (2003–2025)</span>
-            <div class="kpi-selectors">
-              <select id="focusYear"></select>
-              <select id="focusMonth">
-                <option value="1">Ene</option>
-                <option value="2">Feb</option>
-                <option value="3">Mar</option>
-                <option value="4">Abr</option>
-                <option value="5">May</option>
-                <option value="6">Jun</option>
-                <option value="7">Jul</option>
-                <option value="8">Ago</option>
-                <option value="9">Sep</option>
-                <option value="10" selected>Oct</option>
-                <option value="11">Nov</option>
-                <option value="12">Dic</option>
-              </select>
-            </div>
-          </div>
-          <div class="kpi-value" id="kpiCurrentVal">—</div>
-          <div class="kpi-sub" id="kpiCurrentSource">celdas-día equivalentes Aqua</div>
-        </div>
-
-        <div class="kpi-card card">
-          <div class="kpi-title">Referencia Histórica del mismo mes (AOI)</div>
-          <div class="kpi-value" id="kpiMedianVal">—</div>
-          <div class="kpi-sub" id="kpiIqrVal">Promedio: — · Rango normal (P25–P75): —</div>
-        </div>
-
-        <div class="kpi-card card">
-          <div class="kpi-title">Anomalía respecto a la Mediana</div>
-          <div class="kpi-value" id="kpiAnomalyVal">—</div>
-          <div class="kpi-sub" id="kpiAnomalyText">Calculada sobre el total del AOI</div>
-        </div>
-
-        <div class="kpi-card card">
-          <div class="kpi-title">Mes y Año Récord en el AOI</div>
-          <div class="kpi-value" id="kpiPeakVal">—</div>
-          <div class="kpi-sub" id="kpiPeakYear">Temporada crítica: Ago – Oct</div>
+          <span class="logo-text">PIXFIRE</span>
+          <span class="logo-tag">BOLIVIA 2003–2026</span>
         </div>
       </div>
 
-      <!-- Navegación por pestañas -->
-      <div class="tabs-bar">
-        <button class="tab-btn active" data-tab="tab-calendar">
-          🔥 Calendario de Actividad (2003–2026)
+      <nav class="center-nav" aria-label="Modo del escenario principal">
+        <button type="button" class="nav-pill on" data-view="stage-calendar">Calendario</button>
+        <button type="button" class="nav-pill" data-view="stage-map">Mapa AOI</button>
+        <button type="button" class="nav-pill" data-view="stage-seasonal">Estacionalidad</button>
+        <button type="button" class="nav-pill" data-view="stage-validation">Validación</button>
+      </nav>
+
+      <div class="top-tools">
+        <button type="button" id="btnDownloadSeries" class="rb" aria-label="Descargar CSV de la serie mensual del AOI" title="Descargar CSV (Serie mensual del AOI)">
+          <svg class="i"><use href="#ic-download" /></svg>
         </button>
-        <button class="tab-btn" data-tab="tab-seasonal">
-          📈 Comparación Estacional y Anomalías
+        <button type="button" id="btnDownloadCells" class="rb" aria-label="Descargar CSV detallado de celdas-mes" title="Descargar CSV (Celdas-mes detalladas)">
+          <svg class="i"><use href="#ic-table" /></svg>
         </button>
-        <button class="tab-btn" data-tab="tab-validation">
-          ✅ Validación Científica (MODIS vs. VIIRS)
+        <button type="button" id="btnResetAoi" class="rb" aria-label="Restablecer selección a toda Bolivia" title="Restablecer a toda Bolivia">
+          <svg class="i"><use href="#ic-reset" /></svg>
         </button>
       </div>
+    </header>
 
-      <!-- Pestaña 1: Calendario de Actividad de Quema -->
-      <div id="tab-calendar" class="tab-content active card">
-        <div class="card-header">
-          <div>
-            <h2>Calendario de Actividad de Quema (Año × Mes)</h2>
-            <p class="hint">
-              Haz clic en cualquier celda del calendario para inspeccionar ese mes y año en las tarjetas superiores.
-              Desde 2022 (y en ago–sep 2020) se usa VIIRS S-NPP escalado al equivalente MODIS Aqua.
-            </p>
-          </div>
-        </div>
-        <div id="chartCalendar" class="chart-box-lg"></div>
+    <!-- Cinta de filtros flotante en cristal -->
+    <section class="filter-strip glass" aria-label="Controles de región, fechas y visualización">
+      <div class="ctrl-item">
+        <label for="presetRegion">REGIÓN / AOI</label>
+        <select id="presetRegion">
+          <option value="all" selected>Toda Bolivia (país completo)</option>
+          <option value="chiquitania">Chiquitanía y Llanos Orientales</option>
+          <option value="amazonia">Amazonía y Beni Norte</option>
+          <option value="andina">Región Andina y Valles</option>
+          <option value="custom" disabled>Polígono / BBox personalizado</option>
+        </select>
       </div>
 
-      <!-- Pestaña 2: Perfil Estacional y Serie Anual del AOI -->
-      <div id="tab-seasonal" class="tab-content card">
-        <div class="charts-split">
-          <div class="split-item">
-            <h3>Ciclo Estacional del Año Seleccionado vs. Histórico (2003–2025)</h3>
-            <p class="hint">Compara cada mes del año elegido contra la mediana histórica y el rango intercuartílico (P25–P75) del AOI.</p>
-            <div id="chartSeasonal" class="chart-box-md"></div>
-          </div>
-          <div class="split-item">
-            <h3>Evolución Anual Acumulada en el AOI (Armonizada vs. Sensores Crudos)</h3>
-            <p class="hint">Muestra cómo el salto crudo de VIIRS S-NPP queda corregido en la serie armonizada.</p>
-            <div id="chartAnnual" class="chart-box-md"></div>
-          </div>
+      <div class="ctrl-item">
+        <label for="focusYear">MES EVALUADO</label>
+        <div class="inline-selects">
+          <select id="focusMonth" aria-label="Mes a evaluar">
+            <option value="1">Ene</option>
+            <option value="2">Feb</option>
+            <option value="3">Mar</option>
+            <option value="4">Abr</option>
+            <option value="5">May</option>
+            <option value="6">Jun</option>
+            <option value="7">Jul</option>
+            <option value="8">Ago</option>
+            <option value="9">Sep</option>
+            <option value="10" selected>Oct</option>
+            <option value="11">Nov</option>
+            <option value="12">Dic</option>
+          </select>
+          <select id="focusYear" aria-label="Año a evaluar"></select>
         </div>
       </div>
 
-      <!-- Pestaña 3: Validación Científica del Método -->
-      <div id="tab-validation" class="tab-content card">
-        <div class="validation-header">
-          <div>
-            <h2>Demostración Científica: Eliminación del Salto entre MODIS y VIIRS</h2>
-            <p class="hint">
-              Sin armonizar, VIIRS S-NPP (375 m) detecta <strong>+184,6 % más celdas-día</strong> (y ~7× más puntos) que MODIS Aqua (1 km).
-              Entrenando en una mitad del traslape y evaluando fuera de muestra en la otra mitad, el sesgo cae por debajo de ±8,1 %.
-            </p>
-          </div>
-          <div class="validation-Metrics-pills">
-            <span class="pill pill-success">Prueba 2012–16 → 2017–21: <strong>-6,73 %</strong> (crudo +177,1 %)</span>
-            <span class="pill pill-success">Prueba 2017–21 → 2012–16: <strong>+8,09 %</strong> (crudo +194,0 %)</span>
-            <span class="pill pill-info">Chiquitanía: <strong>-0,45 %</strong> · Amazonía: <strong>-11,56 %</strong> · Andina: <strong>+14,46 %</strong></span>
-          </div>
+      <div class="ctrl-item">
+        <label for="yearStart">VENTANA TEMPORAL</label>
+        <div class="inline-selects">
+          <select id="yearStart" aria-label="Año inicial"></select>
+          <span class="sep">—</span>
+          <select id="yearEnd" aria-label="Año final"></select>
         </div>
+      </div>
 
-        <div id="chartValidation" class="chart-box-md"></div>
+      <div class="ctrl-item">
+        <label for="colorRamp">ESCALA DE CALOR</label>
+        <select id="colorRamp">
+          <option value="fire" selected>Ámbar-Fuego (exclusivo focos)</option>
+          <option value="viridis">Viridis (alto contraste daltónicos)</option>
+          <option value="plasma">Plasma (térmica profunda)</option>
+        </select>
+      </div>
 
-        <div class="method-summary">
-          <div class="method-col">
-            <h4>¿Cómo funciona nuestra armonización en 4 capas?</h4>
-            <ol>
-              <li><strong>Pareja orbital gemela (1:30 p. m.):</strong> usamos solo <em>MODIS Aqua</em> y <em>VIIRS Suomi-NPP</em>, que cruzan el ecuador a la misma hora solar local, eliminando el sesgo del ciclo diurno del fuego.</li>
-              <li><strong>Filtro físico oficial (H3):</strong> solo fuego de vegetación (<code>type = 0</code>) con confianza nominal/alta (<code>MODIS ≥ 30%</code>, <code>VIIRS ∈ {n, h}</code>), descartando industrias, volcanes y anomalías magnéticas nocturnas.</li>
-              <li><strong>Grilla común de 0,25° en celdas-día (H1):</strong> contamos si una celda tuvo fuego activo ese día (0 o 1). Así un incendio grande visto como 15 píxeles en VIIRS y 2 en MODIS cuenta igual en ambos, y se elimina el doble conteo por solapamiento de órbitas.</li>
-              <li><strong>Calibración mensual en traslape limpio 2012–2021 (H2):</strong> escalamos S-NPP por mes del año ($k_m = \sum \text{Aqua} / \sum \text{S-NPP}$) antes de que Aqua iniciara su deriva orbital libre en 2022, y reparamos el apagón de telemetría de Aqua de agosto–septiembre de 2020.</li>
-            </ol>
-          </div>
-          <div class="method-col">
-            <h4>Factores mensuales de conversión $k_m$ (Aqua / S-NPP)</h4>
-            <div id="factorsTable" class="factors-grid"></div>
-            <p class="footnote">
-              En los meses secos de incendios grandes (ago–sep, $k_m \approx 0,41$), MODIS ve una fracción mayor de las celdas con fuego; en los meses húmedos de quemas agrícolas pequeñas (ene–mar, $k_m \approx 0,23$), la ventaja de resolución de VIIRS (375 m) es mucho mayor.
-            </p>
-          </div>
+      <div class="ctrl-item bbox-group">
+        <label for="inLatMin">BBOX (LAT S/N · LON O/E)</label>
+        <div class="inline-selects">
+          <input type="number" id="inLatMin" step="0.25" placeholder="-22.9" aria-label="Latitud Sur mínima" />
+          <input type="number" id="inLatMax" step="0.25" placeholder="-9.7" aria-label="Latitud Norte máxima" />
+          <input type="number" id="inLonMin" step="0.25" placeholder="-69.6" aria-label="Longitud Oeste mínima" />
+          <input type="number" id="inLonMax" step="0.25" placeholder="-57.5" aria-label="Longitud Este máxima" />
+          <button type="button" id="btnApplyBbox" class="pill-action">Fijar</button>
         </div>
       </div>
     </section>
-  </main>
 
-  <!-- Librerías JS (CDN) -->
+    <!-- Banner de aviso en caso de muestra pequeña (<4 celdas) o fuera de frontera -->
+    <div id="aoiWarning" class="warning-bar glass hidden" role="status" aria-live="polite">
+      <svg class="i"><use href="#ic-alert" /></svg>
+      <span id="aoiWarningText"></span>
+    </div>
+
+    <!-- Cuadrícula Bento principal (inspirada en Satellites Dashboard) -->
+    <main class="bento-grid">
+      <!-- PROTAGONISTA VISUAL CENTRAL (Columna 1, Filas 1 a 2) -->
+      <section class="hero-stage glass" aria-label="Escenario principal de datos">
+        <div class="stage-Glow" aria-hidden="true"></div>
+
+        <!-- Cabecera interna del escenario -->
+        <div class="stage-header">
+          <div>
+            <span class="eyebrow" id="stageEyebrow">SERIE ARMONIZADA 2003–2026 · EQUIVALENTE MODIS AQUA</span>
+            <h1 id="stageTitle">Calendario de Actividad de Quema (Año × Mes)</h1>
+          </div>
+          <div class="stage-badges">
+            <span class="chip-stat" id="aoiStatsBadge">Cargando grilla...</span>
+            <button type="button" id="btnQuickSwitchMap" class="pill-outline" title="Alternar entre Calendario y Mapa de selección">
+              Dibujar AOI en Mapa
+            </button>
+          </div>
+        </div>
+
+        <!-- Vista 1: Calendario de Actividad (Protagonista por defecto) -->
+        <div id="stage-calendar" class="stage-pane active">
+          <div id="chartCalendar" class="stage-canvas" role="img" aria-label="Mapa de calor Año por Mes de celdas-día con fuego"></div>
+          <div class="stage-caption">
+            <span>Haz clic en cualquier celda del calendario para inspeccionar su anomalía histórica y actualizar las tarjetas laterales.</span>
+            <span id="calendarSummarySR" class="sr-only"></span>
+          </div>
+        </div>
+
+        <!-- Vista 2: Mapa Geoespacial Interactivo de Gran Formato (cuando el usuario elige Mapa AOI) -->
+        <div id="stage-map" class="stage-pane">
+          <div id="mapStageSlot" class="stage-canvas map-slot"></div>
+          <div class="stage-caption">
+            <span>Usa los controles de la derecha del mapa para dibujar un rectángulo o polígono sobre la grilla de 0,25° (~27,5 km).</span>
+          </div>
+        </div>
+
+        <!-- Vista 3: Comparación Estacional y Evolución Anual -->
+        <div id="stage-seasonal" class="stage-pane">
+          <div class="dual-charts">
+            <div class="subchart-wrap">
+              <div class="subchart-title">Ciclo Estacional del Año Evaluado frente a Mediana y Banda P25–P75 (2003–2025)</div>
+              <div id="chartSeasonal" class="subchart-canvas" role="img" aria-label="Gráfico del ciclo estacional comparado con la mediana histórica"></div>
+            </div>
+            <div class="subchart-wrap">
+              <div class="subchart-title">Acumulado Anual en el AOI: Serie Armonizada vs. Sensores Crudos</div>
+              <div id="chartAnnual" class="subchart-canvas" role="img" aria-label="Gráfico de barras y líneas con el total anual armonizado y crudo"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Vista 4: Validación Científica Fuera de Muestra -->
+        <div id="stage-validation" class="stage-pane">
+          <div id="chartValidation" class="stage-canvas validation-canvas" role="img" aria-label="Curvas de validación entre MODIS Aqua real, VIIRS S-NPP crudo y VIIRS S-NPP armonizado"></div>
+          <div class="factors-bar">
+            <span class="factors-label">Factores estacionales $k_m$ (Aqua / S-NPP, calibrados en 2012–2021):</span>
+            <div id="factorsTable" class="factors-strip"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TARJETA MEDIA SUPERIOR (Columna 2, Fila 1): Telemetría del Mes Evaluado vs. Mediana -->
+      <aside class="telemetry-card glass" aria-label="Diagnóstico del mes evaluado frente a la mediana histórica">
+        <div class="card-top">
+          <div>
+            <span class="eyebrow">DIAGNÓSTICO DEL MES</span>
+            <h2 id="diagPeriodTitle">Octubre 2026</h2>
+          </div>
+          <button type="button" class="rb sm-rb" data-goto="stage-seasonal" aria-label="Ver curva estacional detallada" title="Ver curva estacional">
+            <svg class="i"><use href="#ic-arrow-up-right" /></svg>
+          </button>
+        </div>
+
+        <div class="hero-metric">
+          <span class="metric-num fire-num" id="kpiCurrentVal">—</span>
+          <span class="metric-unit">celdas-día eq. Aqua</span>
+        </div>
+
+        <div class="stats-grid">
+          <div>
+            <span>Mediana histórica (2003–25)</span>
+            <b id="kpiMedianVal">—</b>
+          </div>
+          <div>
+            <span>Anomalía vs. mediana</span>
+            <b id="kpiAnomalyVal">—</b>
+          </div>
+          <div>
+            <span>Promedio histórico</span>
+            <b id="kpiMeanVal">—</b>
+          </div>
+          <div>
+            <span>Banda normal (P25–P75)</span>
+            <b id="kpiIqrVal">—</b>
+          </div>
+        </div>
+
+        <div class="telemetry-foot">
+          <div>
+            <span id="kpiAnomalyText">Calculado sobre la suma del AOI</span>
+            <strong id="kpiCurrentSource">Fuente: VIIRS S-NPP armonizado</strong>
+          </div>
+        </div>
+      </aside>
+
+      <!-- TARJETA MEDIA INFERIOR (Columna 2, Fila 2): Mini-Mapa Geoespacial permanente -->
+      <section class="minimap-card glass" aria-label="Visor geoespacial del área de interés">
+        <div class="minimap-bar">
+          <span class="eyebrow">GRILLA ACTIVA 0,25° · BOLIVIA</span>
+          <button type="button" id="btnExpandMap" class="rb sm-rb" aria-label="Expandir mapa al escenario central" title="Expandir mapa al escenario central">
+            <svg class="i"><use href="#ic-layers" /></svg>
+          </button>
+        </div>
+        <div id="mapDockSlot" class="minimap-slot">
+          <div id="map" class="leaflet-host"></div>
+        </div>
+        <div class="minimap-legend">
+          <span>Celdas-día/año:</span>
+          <i class="dot" style="background:#38bdf8"></i><span>&lt;2</span>
+          <i class="dot" style="background:#fbbf24"></i><span>2–10</span>
+          <i class="dot" style="background:#f97316"></i><span>10–25</span>
+          <i class="dot" style="background:#ef4444"></i><span>&gt;25</span>
+        </div>
+      </section>
+
+      <!-- COLUMNA DERECHA (Columna 3, Filas 1 a 3): Evidencia de Armonización MODIS / VIIRS -->
+      <aside class="science-rail glass" aria-label="Evidencia científica de la armonización">
+        <div class="rail-hd">
+          <svg class="i"><use href="#ic-check" /></svg>
+          <span>EVIDENCIA CIENTÍFICA</span>
+        </div>
+
+        <h3>Validación Fuera de Muestra</h3>
+        <article class="sc" tabindex="0" data-goto="stage-validation">
+          <button type="button" class="go" aria-label="Abrir gráfico de validación"><svg class="i"><use href="#ic-arrow-up-right" /></svg></button>
+          <small>Entrena 2012–16 · Prueba 2017–21</small>
+          <strong id="valSplit1Bias">-6,73 % sesgo</strong>
+          <div class="sc-meta">
+            <span>Aqua real: <b id="valSplit1Aqua">59 822</b></span>
+            <span>S-NPP arm.: <b id="valSplit1Harm">55 795,3</b></span>
+          </div>
+          <div class="chip">
+            <span class="pulse-dot teal"></span>
+            <span id="valSplit1Raw">Salto crudo eliminado: +177,1 % → -6,7 %</span>
+          </div>
+        </article>
+
+        <h3>Validación Inversa</h3>
+        <article class="sc" tabindex="0" data-goto="stage-validation">
+          <button type="button" class="go" aria-label="Abrir gráfico de validación"><svg class="i"><use href="#ic-arrow-up-right" /></svg></button>
+          <small>Entrena 2017–21 · Prueba 2012–16</small>
+          <strong id="valSplit2Bias">+8,09 % sesgo</strong>
+          <div class="sc-meta">
+            <span>Aqua real: <b id="valSplit2Aqua">47 776</b></span>
+            <span>S-NPP arm.: <b id="valSplit2Harm">51 640,1</b></span>
+          </div>
+          <div class="chip">
+            <span class="pulse-dot teal"></span>
+            <span id="valSplit2Raw">Salto crudo eliminado: +194,0 % → +8,1 %</span>
+          </div>
+        </article>
+
+        <h3>Continuidad Orbital</h3>
+        <article class="sc" tabindex="0" data-goto="stage-validation">
+          <button type="button" class="go" aria-label="Ver detalles de continuidad orbital"><svg class="i"><use href="#ic-arrow-up-right" /></svg></button>
+          <small>Apagón 2020 y Deriva Aqua 2022+</small>
+          <strong>13:30 LTAN Pareja Limpia</strong>
+          <div class="sc-meta">
+            <span>Ago 2020 Aqua: <b>1 945</b></span>
+            <span>Reparado S-NPP: <b>2 531,0</b></span>
+          </div>
+          <div class="chip act">
+            <span class="pulse-dot amber"></span>
+            <span>Relevo S-NPP desde ene 2022 por deriva orbital de Aqua</span>
+          </div>
+        </article>
+      </aside>
+
+      <!-- FILA INFERIOR DE 3 TARJETAS (Columnas 1 a 2, Fila 3) -->
+      <div class="bottom-row">
+        <!-- Tarjeta Inferior 1: Top 5 Años más Críticos en el AOI -->
+        <section class="card glass" aria-label="Años con mayor actividad de quema en el área seleccionada">
+          <div class="card-head-inline">
+            <h5>Años Récord en el AOI</h5>
+            <button type="button" class="go" data-goto="stage-seasonal" aria-label="Ver evolución anual completa">
+              <svg class="i"><use href="#ic-arrow-up-right" /></svg>
+            </button>
+          </div>
+          <p class="big">
+            <span id="kpiPeakYearNum">—</span>
+            <small id="kpiPeakYearTotal">celdas-día en el año pico</small>
+          </p>
+          <div class="mini-bars" id="topYearsChart" aria-label="Barras de los 5 años con mayor actividad"></div>
+          <div class="mini-bars-labels" id="topYearsLabels"></div>
+        </section>
+
+        <!-- Tarjeta Inferior 2: Hitos del Registro Armonizado en el AOI -->
+        <section class="card glass" aria-label="Hitos clave del registro en el área seleccionada">
+          <div class="card-head-inline">
+            <h5>Hitos del Registro en el AOI</h5>
+            <button type="button" class="go" data-goto="stage-calendar" aria-label="Inspeccionar en el calendario">
+              <svg class="i"><use href="#ic-arrow-up-right" /></svg>
+            </button>
+          </div>
+          <div class="milestones" id="milestonesBox">
+            <div>
+              <em id="msPeakMonthTag">—</em>
+              <strong id="msPeakMonthVal">—</strong>
+              <span>Mes más extremo (2003–2026)</span>
+              <u id="msPeakMonthRatio">—</u>
+            </div>
+            <div>
+              <em>Ago–Oct</em>
+              <strong id="msSeasonShare">—</strong>
+              <span>Concentración en temporada seca</span>
+              <u id="msSeasonMedian">—</u>
+            </div>
+            <div>
+              <em id="msFactorTag">Factor k</em>
+              <strong id="msFactorVal">—</strong>
+              <span>Escala Aqua/S-NPP del mes activo</span>
+              <u id="msSourceTag">—</u>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tarjeta Inferior 3: Distribución Regional y Precisión Espacial -->
+        <section class="card glass" aria-label="Distribución de actividad por macrorregión de Bolivia">
+          <div class="card-head-inline">
+            <h5>Distribución por Macrorregión (Bolivia)</h5>
+            <button type="button" class="go" data-goto="stage-map" aria-label="Seleccionar macrorregión en el mapa">
+              <svg class="i"><use href="#ic-arrow-up-right" /></svg>
+            </button>
+          </div>
+          <div class="pl" id="subregionBars"></div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Pie de página legal y de atribuciones exigido por las bases -->
+    <footer class="app-footer glass">
+      <div class="footer-left">
+        <strong>PixFire (2003–2026)</strong> · Código abierto bajo licencia
+        <a href="LICENSE" target="_blank" rel="noopener">Apache 2.0</a> ·
+        <a href="REFERENCES.md" target="_blank" rel="noopener">Referencias y Licencias de Terceros</a> ·
+        <a href="docs/METODO.md" target="_blank" rel="noopener">Metodología Científica</a>
+      </div>
+      <div class="footer-right">
+        Reconocimiento de datos: <em>We acknowledge the use of data and/or imagery from NASA's Fire Information for Resource Management System (FIRMS) (<a href="https://www.earthdata.nasa.gov/data/tools/firms" target="_blank" rel="noopener">earthdata.nasa.gov/firms</a>), part of NASA's Earth Science Data and Information System (ESDIS).</em>
+        Proyecto independiente desarrollado para el Space Apps Challenge 2026; sin respaldo ni patrocinio oficial de NASA.
+      </div>
+    </footer>
+  </div>
+
+  <!-- Librerías externas con versión fija -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw@1.0.4/leaflet.draw.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 
-  <!-- Lógica de la aplicación -->
+  <!-- Lógica de datos e interacción -->
   <script src="app.js"></script>
 </body>
 </html>

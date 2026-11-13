@@ -1,8 +1,7 @@
 /**
- * PixFire Bolivia — Aplicación web de visualización y análisis de la serie
- * armonizada MODIS (Aqua) + VIIRS (Suomi-NPP) 2003–2026.
+ * PixFire Bolivia — Interfaz rediseñada con filosofía Glassmorphism Cinematográfico.
  *
- * Consume los archivos estáticos definidos en DATA_CONTRACT.md v3:
+ * Mantiene intacta la lógica científica y el contrato de datos v3:
  *   - data/processed/metadata.json
  *   - data/processed/monthly_cells.csv
  *   - data/processed/validation.csv
@@ -13,26 +12,56 @@ const MONTH_NAMES = [
   "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"
 ];
 
+const MONTH_FULL_NAMES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+];
+
 const COLOR_RAMPS = {
+  fire: ["#0b1320", "#1e3a5f", "#b45309", "#f97316", "#fde047"],
   viridis: ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"],
-  ylorrd: ["#ffffcc", "#fed976", "#fd8d3c", "#e31a1c", "#800026"],
   plasma: ["#0d0887", "#7e03a8", "#cc4778", "#f89540", "#f0f921"]
+};
+
+const STAGE_META = {
+  "stage-calendar": {
+    eyebrow: "SERIE ARMONIZADA 2003–2026 · EQUIVALENTE MODIS AQUA",
+    title: "Calendario de Actividad de Quema (Año × Mes)"
+  },
+  "stage-map": {
+    eyebrow: "SELECCIÓN GEOESPACIAL · GRILLA DE 0,25° (~27,5 KM)",
+    title: "Mapa Interactivo del Área de Interés (AOI)"
+  },
+  "stage-seasonal": {
+    eyebrow: "ANÁLISIS CLIMATOLÓGICO · LÍNEA BASE 2003–2025",
+    title: "Ciclo Estacional, Mediana Histórica y Evolución Anual"
+  },
+  "stage-validation": {
+    eyebrow: "PRUEBA FUERA DE MUESTRA · TRASLAPE LIMPIO 2012–2021",
+    title: "Validación Científica: Eliminación del Salto MODIS vs. VIIRS"
+  }
 };
 
 const state = {
   meta: null,
-  cellsMeta: new Map(), // cell_id -> { row, col, lat, lon, totalHarm, records: [] }
-  allRecords: [],       // { cellId, year, month, harm, aqua, snpp, source }
+  cellsMeta: new Map(), // cell_id -> { cellId, row, col, lat, lon, subregion, totalHarm, records: [] }
+  allRecords: [],
   validationRows: [],
   selectedCells: new Set(),
-  customPolygon: null,  // GeoJSON Polygon si el usuario dibuja en el mapa
+  customPolygon: null,
   preset: "all",
+  activeStage: "stage-calendar",
   yearStart: 2003,
   yearEnd: 2026,
   focusYear: 2026,
   focusMonth: 10,
-  colorRamp: "viridis",
-   currentSeriesByYm: new Map() // "YYYY-MM" -> { harm, aqua, snpp, hasNrt }
+  colorRamp: "fire",
+  currentSeriesByYm: new Map(),
+  subregionTotals: {
+    chiquitania_llanos: 0,
+    amazonia_beni_norte: 0,
+    andina_valles: 0
+  }
 };
 
 let map = null;
@@ -44,7 +73,7 @@ let chartAnnual = null;
 let chartValidation = null;
 
 /* =========================================================================
- * 1. Carga y parseo de datos
+ * 1. Carga y parseo de datos estáticos (sin backend)
  * ========================================================================= */
 async function loadAllData() {
   const [metaResp, cellsResp, valResp] = await Promise.all([
@@ -59,6 +88,12 @@ async function loadAllData() {
 
   parseCellsCsv(cellsText, state.meta.cell_size_deg);
   parseValidationCsv(valText);
+}
+
+function classifySubregion(lat, lon) {
+  if (lon <= -64.0 && lat < -14.0) return "andina_valles";
+  if (lat >= -14.0) return "amazonia_beni_norte";
+  return "chiquitania_llanos";
 }
 
 function parseCellsCsv(csvText, cellSize) {
@@ -80,7 +115,8 @@ function parseCellsCsv(csvText, cellSize) {
       const col = parseInt(cStr, 10);
       const lat = (row + 0.5) * cellSize - 90.0;
       const lon = (col + 0.5) * cellSize - 180.0;
-      cellObj = { cellId, row, col, lat, lon, totalHarm: 0, records: [] };
+      const subregion = classifySubregion(lat, lon);
+      cellObj = { cellId, row, col, lat, lon, subregion, totalHarm: 0, records: [] };
       state.cellsMeta.set(cellId, cellObj);
     }
 
@@ -88,6 +124,7 @@ function parseCellsCsv(csvText, cellSize) {
     cellObj.totalHarm += harm;
     cellObj.records.push(rec);
     state.allRecords.push(rec);
+    state.subregionTotals[cellObj.subregion] = (state.subregionTotals[cellObj.subregion] || 0) + harm;
   }
 }
 
@@ -111,45 +148,42 @@ function parseValidationCsv(csvText) {
 }
 
 /* =========================================================================
- * 2. Mapa interactivo (Leaflet + Leaflet.draw + Turf.js)
+ * 2. Mapa Geoespacial (se aloja en el Mini-Mapa o se expande al Escenario Central)
  * ========================================================================= */
 function initMap() {
   map = L.map("map", {
     center: [-16.4, -64.2],
-    zoom: 5,
+    zoom: 4,
     minZoom: 4,
-    maxZoom: 10
+    maxZoom: 10,
+    zoomControl: true
   });
 
   const CARTO_KEY = "cb1_58lv_1_5016ded4d19a88b491106fc0";
 
-  // Capa 1: Carto Dark Matter (el modo oscuro premium de Carto, con API Key oficial)
   const cartoDark = L.tileLayer(`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO | Datos: NASA FIRMS',
-    subdomains: 'abcd',
+    attribution: "&copy; OpenStreetMap &copy; CARTO | NASA FIRMS",
+    subdomains: "abcd",
     maxZoom: 19
   });
 
-  // Capa 2: Carto Voyager (modo claro elegante)
   const cartoVoyager = L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO | Datos: NASA FIRMS',
-    subdomains: 'abcd',
+    attribution: "&copy; OpenStreetMap &copy; CARTO | NASA FIRMS",
+    subdomains: "abcd",
     maxZoom: 19
   });
 
-  // Capa 3: Satélite Real (Esri World Imagery)
   const satLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics | Datos: NASA FIRMS',
+    attribution: "Tiles &copy; Esri | NASA FIRMS",
     maxZoom: 18
   });
 
-  // Capa por defecto: Carto Dark Matter
   cartoDark.addTo(map);
 
   const baseMaps = {
-    "Carto Dark Matter (Oscuro)": cartoDark,
-    "Carto Voyager (Claro)": cartoVoyager,
-    "Satélite Real (Esri)": satLayer
+    "Carto Dark Matter": cartoDark,
+    "Carto Voyager": cartoVoyager,
+    "Satélite Esri": satLayer
   };
 
   L.control.layers(baseMaps, null, { position: "topleft" }).addTo(map);
@@ -162,10 +196,10 @@ function initMap() {
     draw: {
       polygon: {
         allowIntersection: false,
-        shapeOptions: { color: "#38bdf8", weight: 2, fillOpacity: 0.15 }
+        shapeOptions: { color: "#7ff0e8", weight: 2, fillOpacity: 0.16 }
       },
       rectangle: {
-        shapeOptions: { color: "#38bdf8", weight: 2, fillOpacity: 0.15 }
+        shapeOptions: { color: "#7ff0e8", weight: 2, fillOpacity: 0.16 }
       },
       polyline: false,
       circle: false,
@@ -196,16 +230,15 @@ function initMap() {
 
 function getDensityColor(annualAvg) {
   if (annualAvg > 25) return "#ef4444";
-  if (annualAvg > 12) return "#fde725";
-  if (annualAvg > 5) return "#5ec962";
-  if (annualAvg > 1.5) return "#21918c";
-  return "#3b528b";
+  if (annualAvg > 10) return "#f97316";
+  if (annualAvg > 2) return "#fbbf24";
+  return "#38bdf8";
 }
 
 function renderMapGrid() {
   gridLayerGroup.clearLayers();
   const half = state.meta.cell_size_deg / 2.0;
-  const numYears = 23.8; // 2003-2026
+  const numYears = 23.8;
 
   state.cellsMeta.forEach((cell) => {
     const isSelected = state.selectedCells.has(cell.cellId);
@@ -218,16 +251,16 @@ function renderMapGrid() {
     ];
 
     const rect = L.rectangle(bounds, {
-      color: isSelected ? "#f8fafc" : fillColor,
-      weight: isSelected ? 0.6 : 0.2,
+      color: isSelected ? fillColor : "#1e293b",
+      weight: isSelected ? 0.5 : 0.15,
       fillColor: fillColor,
-      fillOpacity: isSelected ? 0.68 : 0.12
+      fillOpacity: isSelected ? 0.65 : 0.1
     });
 
     rect.bindTooltip(
       `<strong>Celda ${cell.cellId}</strong><br>` +
       `Centro: ${cell.lat.toFixed(3)}°, ${cell.lon.toFixed(3)}°<br>` +
-      `Promedio anual: ${annualAvg.toFixed(1)} celdas-día/año<br>` +
+      `Promedio: ${annualAvg.toFixed(1)} celdas-día/año<br>` +
       `Total 2003–2026: ${cell.totalHarm.toFixed(1)} celdas-día`,
       { sticky: true }
     );
@@ -236,14 +269,31 @@ function renderMapGrid() {
   });
 }
 
+function moveMapToStage(inMainStage) {
+  const mapEl = document.getElementById("map");
+  const targetSlot = inMainStage
+    ? document.getElementById("mapStageSlot")
+    : document.getElementById("mapDockSlot");
+
+  if (mapEl && targetSlot && mapEl.parentElement !== targetSlot) {
+    targetSlot.appendChild(mapEl);
+    setTimeout(() => {
+      if (map) {
+        map.invalidateSize();
+        map.setZoom(inMainStage ? 5 : 4);
+      }
+    }, 60);
+  }
+}
+
 /* =========================================================================
  * 3. Selección espacial (AOI) y agregación dinámica
  * ========================================================================= */
 function cellMatchesPreset(cell, preset) {
   if (preset === "all") return true;
-  if (preset === "chiquitania") return cell.lon > -64.0 && cell.lat < -14.0;
-  if (preset === "amazonia") return cell.lat >= -14.0;
-  if (preset === "andina") return cell.lon <= -64.0 && cell.lat < -14.0;
+  if (preset === "chiquitania") return cell.subregion === "chiquitania_llanos";
+  if (preset === "amazonia") return cell.subregion === "amazonia_beni_norte";
+  if (preset === "andina") return cell.subregion === "andina_valles";
   return true;
 }
 
@@ -261,36 +311,33 @@ function recomputeAoiSelection() {
     }
   });
 
-  // Actualizar badge y avisos de casos borde (DATA_CONTRACT.md §3.3)
   const count = state.selectedCells.size;
-  document.getElementById("aoiStatsBadge").textContent =
-    `${count} celdas activas (${Math.round(count * 27.5 * 27.5).toLocaleString("es-BO")} km²)`;
+  const approxKm2 = Math.round(count * 27.5 * 27.5).toLocaleString("es-BO");
+  document.getElementById("aoiStatsBadge").textContent = `${count} celdas activas · ~${approxKm2} km²`;
 
-  const warnEl = document.getElementById("aoiWarning");
+  const warnBar = document.getElementById("aoiWarning");
+  const warnTxt = document.getElementById("aoiWarningText");
   const warnings = [];
+
   if (count === 0) {
-    warnings.push("El área dibujada no contiene celdas con detecciones históricas de fuego en Bolivia.");
+    warnings.push("El área seleccionada no contiene celdas con detecciones históricas de fuego en Bolivia.");
   } else if (count < 4) {
-    warnings.push(
-      `Muestra espacial pequeña (${count} celdas): en áreas menores a 4 celdas la incertidumbre del factor estacional es mayor.`
-    );
+    warnings.push(`Muestra espacial pequeña (${count} celdas): en áreas menores a 4 celdas la varianza del factor mensual es mayor.`);
   }
 
   if (state.customPolygon) {
     const [minLon, minLat, maxLon, maxLat] = turf.bbox(state.customPolygon);
     const [bMinLon, bMinLat, bMaxLon, bMaxLat] = state.meta.bbox;
     if (minLon < bMinLon - 0.5 || minLat < bMinLat - 0.5 || maxLon > bMaxLon + 0.5 || maxLat > bMaxLat + 0.5) {
-      warnings.push(
-        "Parte del polígono se extiende fuera de la frontera de Bolivia (Buffer 0 km); los datos cubren únicamente territorio boliviano."
-      );
+      warnings.push("Parte del polígono se extiende fuera de la frontera de Bolivia (Buffer 0 km); los datos cubren solo territorio boliviano.");
     }
   }
 
   if (warnings.length > 0) {
-    warnEl.textContent = "⚠️ " + warnings.join(" ");
-    warnEl.classList.remove("hidden");
+    warnTxt.textContent = warnings.join(" ");
+    warnBar.classList.remove("hidden");
   } else {
-    warnEl.classList.add("hidden");
+    warnBar.classList.add("hidden");
   }
 
   renderMapGrid();
@@ -301,7 +348,6 @@ function recomputeAoiSelection() {
 function aggregateSelectedCells() {
   state.currentSeriesByYm.clear();
 
-  // Inicializar todos los meses 2003-01 a 2026-10 en 0 dentro de su cobertura
   for (let y = 2003; y <= 2026; y++) {
     for (let m = 1; m <= 12; m++) {
       if (y === 2026 && m > 10) continue;
@@ -335,7 +381,7 @@ function aggregateSelectedCells() {
 }
 
 /* =========================================================================
- * 4. Estadísticas históricas (Mediana, Promedio, P25, P75 sobre el total del AOI)
+ * 4. Estadísticas históricas (Mediana, Promedio, P25, P75 sobre la suma del AOI)
  * ========================================================================= */
 function quantile(sortedArr, q) {
   if (sortedArr.length === 0) return 0;
@@ -373,42 +419,46 @@ function computeHistoricalStatsByMonth() {
 }
 
 /* =========================================================================
- * 5. Actualización de KPIs y Gráficos ECharts
+ * 5. Actualización de Tarjetas Bento y Gráficos ECharts
  * ========================================================================= */
 function updateAllViews() {
   const histStats = computeHistoricalStatsByMonth();
-  updateKpis(histStats);
+  updateTelemetryAndBottomCards(histStats);
   renderCalendarChart();
   renderSeasonalChart(histStats);
   renderAnnualChart();
   renderValidationChart();
 }
 
-function updateKpis(histStats) {
+function updateTelemetryAndBottomCards(histStats) {
   const ym = `${state.focusYear}-${String(state.focusMonth).padStart(2, "0")}`;
   const current = state.currentSeriesByYm.get(ym);
   const mStat = histStats[state.focusMonth];
 
+  document.getElementById("diagPeriodTitle").textContent =
+    `${MONTH_FULL_NAMES[state.focusMonth - 1]} ${state.focusYear}`;
+
   const currVal = current ? current.harm : 0;
   document.getElementById("kpiCurrentVal").textContent =
-    `${currVal.toLocaleString("es-BO", { maximumFractionDigits: 1 })}`;
+    currVal.toLocaleString("es-BO", { maximumFractionDigits: 1 });
 
-  let sourceLabel = "Fuente: MODIS Aqua directo";
+  let sourceLabel = "MODIS Aqua directo";
   if (state.focusYear === 2020 && (state.focusMonth === 8 || state.focusMonth === 9)) {
-    sourceLabel = "Fuente: VIIRS S-NPP armonizado (reemplazo apagón Aqua)";
+    sourceLabel = "VIIRS S-NPP armonizado (reemplazo apagón Aqua)";
   } else if (state.focusYear >= 2022) {
     sourceLabel = current && current.hasNrt
-      ? "Fuente: VIIRS S-NPP armonizado (2026 NRT provisional)"
-      : "Fuente: VIIRS S-NPP armonizado (era deriva Aqua)";
+      ? "VIIRS S-NPP armonizado (2026 NRT provisional)"
+      : "VIIRS S-NPP armonizado (era deriva Aqua)";
   }
-  document.getElementById("kpiCurrentSource").textContent = sourceLabel;
+  document.getElementById("kpiCurrentSource").textContent = `Fuente: ${sourceLabel}`;
 
   document.getElementById("kpiMedianVal").textContent =
-    `${mStat.median.toLocaleString("es-BO", { maximumFractionDigits: 1 })}`;
+    mStat.median.toLocaleString("es-BO", { maximumFractionDigits: 1 });
+  document.getElementById("kpiMeanVal").textContent =
+    mStat.mean.toLocaleString("es-BO", { maximumFractionDigits: 1 });
   document.getElementById("kpiIqrVal").textContent =
-    `Promedio: ${mStat.mean.toFixed(1)} · P25–P75: ${mStat.p25.toFixed(1)} – ${mStat.p75.toFixed(1)}`;
+    `${mStat.p25.toFixed(0)} – ${mStat.p75.toFixed(0)}`;
 
-  // Anomalía
   const diff = currVal - mStat.median;
   const anomEl = document.getElementById("kpiAnomalyVal");
   const anomTxt = document.getElementById("kpiAnomalyText");
@@ -416,51 +466,152 @@ function updateKpis(histStats) {
   if (mStat.median > 0) {
     const pct = (diff / mStat.median) * 100.0;
     const sign = diff >= 0 ? "+" : "";
-    anomEl.textContent = `${sign}${pct.toFixed(1)} % (${sign}${diff.toFixed(1)})`;
-    anomEl.style.color = diff > 0 ? "#ef4444" : "#22c55e";
-    anomTxt.textContent = diff > 0
-      ? `Por encima de la mediana de ${MONTH_NAMES[state.focusMonth - 1]} (2003–2025)`
-      : `Por debajo de la mediana de ${MONTH_NAMES[state.focusMonth - 1]} (2003–2025)`;
+    anomEl.textContent = `${sign}${pct.toFixed(1)} %`;
+    anomEl.style.color = diff > 0 ? "#fbbf24" : "#7ff0e8";
+    anomTxt.textContent = `${sign}${diff.toFixed(1)} celdas-día frente a la mediana de ${MONTH_NAMES[state.focusMonth - 1]}`;
   } else {
     const diffMean = currVal - mStat.mean;
     const sign = diffMean >= 0 ? "+" : "";
-    anomEl.textContent = `${sign}${diffMean.toFixed(1)} vs. prom.`;
-    anomEl.style.color = diffMean > 0 ? "#eab308" : "#22c55e";
-    anomTxt.textContent = `Mediana histórica = 0; comparado contra promedio (${mStat.mean.toFixed(1)})`;
+    anomEl.textContent = `${sign}${diffMean.toFixed(1)}`;
+    anomEl.style.color = diffMean > 0 ? "#fbbf24" : "#7ff0e8";
+    anomTxt.textContent = `Mediana = 0; diferencia vs. promedio (${mStat.mean.toFixed(1)})`;
   }
 
-  // Récord en el rango de años seleccionado
+  // Calcular totales anuales y mes récord dentro del rango seleccionado
   let maxMonthVal = -1;
-  let maxYm = "—";
-  const annualTotals = new Map();
+  let maxMonthLabel = "—";
+  let maxMonthM = 1;
+  let totalAll = 0;
+  let totalDrySeason = 0; // ago, sep, oct
+  const annualTotals = [];
 
-  state.currentSeriesByYm.forEach((val, key) => {
-    if (val.year < state.yearStart || val.year > state.yearEnd) return;
-    if (val.harm > maxMonthVal) {
-      maxMonthVal = val.harm;
-      maxYm = `${MONTH_NAMES[val.month - 1]} ${val.year}`;
+  for (let y = state.yearStart; y <= state.yearEnd; y++) {
+    let ySum = 0;
+    for (let m = 1; m <= 12; m++) {
+      if (y === 2026 && m > 10) continue;
+      const b = state.currentSeriesByYm.get(`${y}-${String(m).padStart(2, "0")}`);
+      if (!b) continue;
+      ySum += b.harm;
+      totalAll += b.harm;
+      if (m >= 8 && m <= 10) totalDrySeason += b.harm;
+      if (b.harm > maxMonthVal) {
+        maxMonthVal = b.harm;
+        maxMonthLabel = `${MONTH_NAMES[m - 1]} ${y}`;
+        maxMonthM = m;
+      }
     }
-    annualTotals.set(val.year, (annualTotals.get(val.year) || 0) + val.harm);
+    annualTotals.push({ year: y, total: ySum });
+  }
+
+  // Ordenar Top 5 años más críticos para la tarjeta inferior 1
+  const top5 = [...annualTotals].sort((a, b) => b.total - a.total).slice(0, 5);
+  const peakYearObj = top5[0] || { year: "—", total: 0 };
+
+  document.getElementById("kpiPeakYearNum").textContent = String(peakYearObj.year);
+  document.getElementById("kpiPeakYearTotal").textContent =
+    `${Math.round(peakYearObj.total).toLocaleString("es-BO")} celdas-día en el año récord`;
+
+  const barsBox = document.getElementById("topYearsChart");
+  const labelsBox = document.getElementById("topYearsLabels");
+  barsBox.innerHTML = "";
+  labelsBox.innerHTML = "";
+
+  const maxTop = peakYearObj.total > 0 ? peakYearObj.total : 1;
+  top5.forEach((item) => {
+    const pct = Math.max(8, Math.round((item.total / maxTop) * 94));
+    const col = document.createElement("div");
+    col.className = "bar-col";
+    col.title = `${item.year}: ${item.total.toFixed(1)} celdas-día`;
+    col.innerHTML = `<div class="f" style="height:${pct}%"></div><i class="m" style="bottom:${pct}%"></i>`;
+    barsBox.appendChild(col);
+
+    const lbl = document.createElement("span");
+    lbl.textContent = String(item.year);
+    labelsBox.appendChild(lbl);
   });
 
-  let peakYear = "—";
-  let peakYearVal = -1;
-  annualTotals.forEach((tot, y) => {
-    if (tot > peakYearVal) {
-      peakYearVal = tot;
-      peakYear = y;
-    }
-  });
+  // Tarjeta inferior 2: Hitos del Registro en el AOI
+  document.getElementById("msPeakMonthTag").textContent = maxMonthLabel;
+  document.getElementById("msPeakMonthVal").textContent =
+    maxMonthVal >= 0 ? `${Math.round(maxMonthVal).toLocaleString("es-BO")} celdas-día` : "—";
+  const medOfPeak = histStats[maxMonthM] ? histStats[maxMonthM].median : 0;
+  document.getElementById("msPeakMonthRatio").textContent =
+    medOfPeak > 0 ? `${(maxMonthVal / medOfPeak).toFixed(1)}x la mediana del mes` : "Pico histórico";
 
-  document.getElementById("kpiPeakVal").textContent =
-    maxMonthVal >= 0 ? `${maxYm} (${maxMonthVal.toFixed(0)})` : "—";
-  document.getElementById("kpiPeakYear").textContent =
-    peakYearVal >= 0 ? `Año más crítico: ${peakYear} (${peakYearVal.toFixed(0)} celdas-día)` : "—";
+  const dryPct = totalAll > 0 ? (totalDrySeason / totalAll) * 100.0 : 0;
+  document.getElementById("msSeasonShare").textContent = `${dryPct.toFixed(1)} % del fuego`;
+  const dryMedSum = (histStats[8]?.median || 0) + (histStats[9]?.median || 0) + (histStats[10]?.median || 0);
+  document.getElementById("msSeasonMedian").textContent = `Mediana Ago–Oct: ${Math.round(dryMedSum)}`;
+
+  const kVal = state.meta.factors_by_month[String(state.focusMonth)];
+  document.getElementById("msFactorTag").textContent = `Factor ${MONTH_NAMES[state.focusMonth - 1]}`;
+  document.getElementById("msFactorVal").textContent = `k = ${Number(kVal).toFixed(3)}`;
+  document.getElementById("msSourceTag").textContent =
+    `1 celda S-NPP = ${Number(kVal).toFixed(2)} eq. Aqua`;
+
+  // Resumen accesible para lectores de pantalla
+  document.getElementById("calendarSummarySR").textContent =
+    `Área seleccionada con ${state.selectedCells.size} celdas. Año récord ${peakYearObj.year} con ${Math.round(peakYearObj.total)} celdas-día. Mes pico ${maxMonthLabel} con ${Math.round(maxMonthVal)} celdas-día.`;
 }
 
+function renderSubregionBars() {
+  const container = document.getElementById("subregionBars");
+  container.innerHTML = "";
+
+  const totChiq = state.subregionTotals.chiquitania_llanos || 0;
+  const totAmz = state.subregionTotals.amazonia_beni_norte || 0;
+  const totAnd = state.subregionTotals.andina_valles || 0;
+  const grandTotal = totChiq + totAmz + totAnd || 1;
+
+  const items = [
+    { key: "chiquitania", label: "Chiquitanía y Llanos", val: totChiq, bias: "-0,45 %" },
+    { key: "amazonia", label: "Amazonía y Beni", val: totAmz, bias: "-11,56 %" },
+    { key: "andina", label: "Andina y Valles", val: totAnd, bias: "+14,46 %" }
+  ];
+
+  items.forEach((it) => {
+    const pct = Math.round((it.val / grandTotal) * 100);
+    const row = document.createElement("div");
+    row.className = "pl-row";
+    row.title = `Filtrar ${it.label} (Sesgo de validación 2012–2021: ${it.bias})`;
+    row.innerHTML = `
+      <span>${it.label}</span>
+      <i style="--w:${pct}%"></i>
+      <b>${pct}% (${it.bias})</b>
+    `;
+    row.addEventListener("click", () => {
+      resetToPreset(it.key);
+    });
+    container.appendChild(row);
+  });
+}
+
+function populateScienceRailFromMeta() {
+  const m1 = state.meta.validation_metrics?.train_2012_2016_test_2017_2021;
+  const m2 = state.meta.validation_metrics?.train_2017_2021_test_2012_2016;
+  if (m1) {
+    document.getElementById("valSplit1Bias").textContent = `${m1.harmonized_bias_pct} % sesgo`;
+    document.getElementById("valSplit1Aqua").textContent = m1.aqua_total.toLocaleString("es-BO");
+    document.getElementById("valSplit1Harm").textContent = m1.snpp_harmonized_total.toLocaleString("es-BO");
+    document.getElementById("valSplit1Raw").textContent =
+      `Salto crudo eliminado: +${m1.raw_bias_pct.toFixed(1)} % → ${m1.harmonized_bias_pct} %`;
+  }
+  if (m2) {
+    document.getElementById("valSplit2Bias").textContent = `+${m2.harmonized_bias_pct} % sesgo`;
+    document.getElementById("valSplit2Aqua").textContent = m2.aqua_total.toLocaleString("es-BO");
+    document.getElementById("valSplit2Harm").textContent = m2.snpp_harmonized_total.toLocaleString("es-BO");
+    document.getElementById("valSplit2Raw").textContent =
+      `Salto crudo eliminado: +${m2.raw_bias_pct.toFixed(1)} % → +${m2.harmonized_bias_pct} %`;
+  }
+}
+
+/* =========================================================================
+ * 6. Gráficos ECharts en el Escenario Central
+ * ========================================================================= */
 function renderCalendarChart() {
+  const dom = document.getElementById("chartCalendar");
   if (!chartCalendar) {
-    chartCalendar = echarts.init(document.getElementById("chartCalendar"));
+    chartCalendar = echarts.init(dom);
     chartCalendar.on("click", (params) => {
       if (params.value && params.value.length === 3) {
         const mIdx = params.value[0];
@@ -495,29 +646,34 @@ function renderCalendarChart() {
     }
   });
 
-  const ramp = COLOR_RAMPS[state.colorRamp] || COLOR_RAMPS.viridis;
+  const ramp = COLOR_RAMPS[state.colorRamp] || COLOR_RAMPS.fire;
 
   chartCalendar.setOption({
     tooltip: {
       position: "top",
+      backgroundColor: "rgba(8, 13, 22, 0.92)",
+      borderColor: "rgba(127, 240, 232, 0.4)",
+      textStyle: { color: "#f3f7fb", fontSize: 11 },
       formatter: (p) => {
-        const mName = MONTH_NAMES[p.value[0]];
+        const mName = MONTH_FULL_NAMES[p.value[0]];
         const yName = years[p.value[1]];
         return `<strong>${mName} ${yName}</strong><br/>Actividad armonizada: <strong>${p.value[2]}</strong> celdas-día`;
       }
     },
-    grid: { top: 20, bottom: 55, left: 60, right: 25 },
+    grid: { top: 10, bottom: 48, left: 48, right: 16 },
     xAxis: {
       type: "category",
       data: MONTH_NAMES,
-      splitArea: { show: true },
-      axisLabel: { color: "#cbd5e1", fontWeight: 600 }
+      splitArea: { show: false },
+      axisLine: { lineStyle: { color: "rgba(255,255,255,0.12)" } },
+      axisLabel: { color: "#cbd5e1", fontSize: 10.5 }
     },
     yAxis: {
       type: "category",
       data: years,
-      splitArea: { show: true },
-      axisLabel: { color: "#cbd5e1" }
+      splitArea: { show: false },
+      axisLine: { lineStyle: { color: "rgba(255,255,255,0.12)" } },
+      axisLabel: { color: "#94a3b8", fontSize: 10 }
     },
     visualMap: {
       min: 0,
@@ -525,25 +681,28 @@ function renderCalendarChart() {
       calculable: true,
       orient: "horizontal",
       left: "center",
-      bottom: 5,
+      bottom: 0,
+      itemWidth: 12,
+      itemHeight: 110,
       inRange: { color: ramp },
-      textStyle: { color: "#cbd5e1" }
+      textStyle: { color: "#cbd5e1", fontSize: 10 }
     },
     series: [
       {
         name: "Celdas-día",
         type: "heatmap",
         data: data,
-        label: {
-          show: years.length <= 14,
-          formatter: (p) => (p.value[2] > 0 ? Math.round(p.value[2]) : ""),
-          color: "#0f172a",
-          fontSize: 10
+        itemStyle: {
+          borderColor: "rgba(4, 7, 11, 0.55)",
+          borderWidth: 1,
+          borderRadius: 2
         },
         emphasis: {
           itemStyle: {
+            borderColor: "#7ff0e8",
+            borderWidth: 1.5,
             shadowBlur: 8,
-            shadowColor: "rgba(255, 255, 255, 0.8)"
+            shadowColor: "rgba(127, 240, 232, 0.6)"
           }
         }
       }
@@ -552,14 +711,14 @@ function renderCalendarChart() {
 }
 
 function renderSeasonalChart(histStats) {
+  const dom = document.getElementById("chartSeasonal");
   if (!chartSeasonal) {
-    chartSeasonal = echarts.init(document.getElementById("chartSeasonal"));
+    chartSeasonal = echarts.init(dom);
   }
 
   const p25 = [];
   const iqrDiff = [];
   const median = [];
-  const mean = [];
   const focusSeries = [];
 
   for (let m = 1; m <= 12; m++) {
@@ -567,7 +726,6 @@ function renderSeasonalChart(histStats) {
     p25.push(Number(st.p25.toFixed(1)));
     iqrDiff.push(Number((st.p75 - st.p25).toFixed(1)));
     median.push(Number(st.median.toFixed(1)));
-    mean.push(Number(st.mean.toFixed(1)));
 
     if (state.focusYear === 2026 && m > 10) {
       focusSeries.push(null);
@@ -579,23 +737,27 @@ function renderSeasonalChart(histStats) {
   }
 
   chartSeasonal.setOption({
-    tooltip: { trigger: "axis" },
-    legend: {
-      data: [`Año ${state.focusYear}`, "Mediana Histórica (2003–2025)", "Promedio Histórico", "Banda P25–P75"],
-      textStyle: { color: "#cbd5e1", fontSize: 11 }
+    tooltip: {
+      trigger: "axis",
+      backgroundColor: "rgba(8, 13, 22, 0.92)",
+      borderColor: "rgba(127, 240, 232, 0.4)",
+      textStyle: { color: "#f3f7fb", fontSize: 11 }
     },
-    grid: { top: 40, bottom: 30, left: 55, right: 20 },
+    legend: {
+      data: [`Año ${state.focusYear}`, "Mediana (2003–2025)", "Banda P25–P75"],
+      textStyle: { color: "#cbd5e1", fontSize: 10 },
+      top: 0
+    },
+    grid: { top: 32, bottom: 26, left: 48, right: 14 },
     xAxis: {
       type: "category",
       data: MONTH_NAMES,
-      axisLabel: { color: "#cbd5e1" }
+      axisLabel: { color: "#cbd5e1", fontSize: 10 }
     },
     yAxis: {
       type: "value",
-      name: "Celdas-día",
-      nameTextStyle: { color: "#94a3b8" },
-      axisLabel: { color: "#cbd5e1" },
-      splitLine: { lineStyle: { color: "#334155" } }
+      axisLabel: { color: "#94a3b8", fontSize: 10 },
+      splitLine: { lineStyle: { color: "rgba(255,255,255,0.07)" } }
     },
     series: [
       {
@@ -612,38 +774,32 @@ function renderSeasonalChart(histStats) {
         type: "line",
         data: iqrDiff,
         lineStyle: { opacity: 0 },
-        areaStyle: { color: "rgba(56, 189, 248, 0.2)" },
+        areaStyle: { color: "rgba(127, 240, 232, 0.16)" },
         stack: "iqr",
         symbol: "none"
       },
       {
-        name: "Mediana Histórica (2003–2025)",
+        name: "Mediana (2003–2025)",
         type: "line",
         data: median,
-        lineStyle: { color: "#38bdf8", width: 2, type: "dashed" },
-        itemStyle: { color: "#38bdf8" }
-      },
-      {
-        name: "Promedio Histórico",
-        type: "line",
-        data: mean,
-        lineStyle: { color: "#94a3b8", width: 1.5, type: "dotted" },
-        itemStyle: { color: "#94a3b8" }
+        lineStyle: { color: "#7ff0e8", width: 2, type: "dashed" },
+        itemStyle: { color: "#7ff0e8" }
       },
       {
         name: `Año ${state.focusYear}`,
         type: "line",
         data: focusSeries,
-        lineStyle: { color: "#f97316", width: 3 },
-        itemStyle: { color: "#f97316" }
+        lineStyle: { color: "#f97316", width: 2.8 },
+        itemStyle: { color: "#fbbf24" }
       }
     ]
   });
 }
 
 function renderAnnualChart() {
+  const dom = document.getElementById("chartAnnual");
   if (!chartAnnual) {
-    chartAnnual = echarts.init(document.getElementById("chartAnnual"));
+    chartAnnual = echarts.init(dom);
   }
 
   const years = [];
@@ -676,44 +832,48 @@ function renderAnnualChart() {
   }
 
   chartAnnual.setOption({
-    tooltip: { trigger: "axis" },
-    legend: {
-      data: ["Serie Armonizada", "MODIS Aqua Crudo", "VIIRS S-NPP Crudo (con salto)"],
-      textStyle: { color: "#cbd5e1", fontSize: 11 }
+    tooltip: {
+      trigger: "axis",
+      backgroundColor: "rgba(8, 13, 22, 0.92)",
+      borderColor: "rgba(127, 240, 232, 0.4)",
+      textStyle: { color: "#f3f7fb", fontSize: 11 }
     },
-    grid: { top: 40, bottom: 30, left: 60, right: 20 },
+    legend: {
+      data: ["Serie Armonizada", "MODIS Aqua", "VIIRS S-NPP Crudo"],
+      textStyle: { color: "#cbd5e1", fontSize: 10 },
+      top: 0
+    },
+    grid: { top: 32, bottom: 26, left: 52, right: 14 },
     xAxis: {
       type: "category",
       data: years,
-      axisLabel: { color: "#cbd5e1" }
+      axisLabel: { color: "#cbd5e1", fontSize: 9.5 }
     },
     yAxis: {
       type: "value",
-      name: "Celdas-día / año",
-      nameTextStyle: { color: "#94a3b8" },
-      axisLabel: { color: "#cbd5e1" },
-      splitLine: { lineStyle: { color: "#334155" } }
+      axisLabel: { color: "#94a3b8", fontSize: 10 },
+      splitLine: { lineStyle: { color: "rgba(255,255,255,0.07)" } }
     },
     series: [
       {
-        name: "VIIRS S-NPP Crudo (con salto)",
+        name: "VIIRS S-NPP Crudo",
         type: "line",
         data: snppRawTotals,
-        lineStyle: { color: "#ef4444", width: 1.8, type: "dashed" },
+        lineStyle: { color: "#ef4444", width: 1.5, type: "dotted" },
         itemStyle: { color: "#ef4444" }
       },
       {
-        name: "MODIS Aqua Crudo",
+        name: "MODIS Aqua",
         type: "line",
         data: aquaTotals,
-        lineStyle: { color: "#38bdf8", width: 1.8 },
-        itemStyle: { color: "#38bdf8" }
+        lineStyle: { color: "#4aa8ff", width: 1.8 },
+        itemStyle: { color: "#4aa8ff" }
       },
       {
         name: "Serie Armonizada",
         type: "bar",
         data: harmTotals,
-        itemStyle: { color: "rgba(249, 115, 22, 0.75)" }
+        itemStyle: { color: "rgba(249, 115, 22, 0.78)", borderRadius: [3, 3, 0, 0] }
       }
     ]
   });
@@ -732,38 +892,44 @@ function renderValidationChart() {
   const snppConvData = rows.map((r) => r.snppConverted);
 
   chartValidation.setOption({
-    tooltip: { trigger: "axis" },
+    tooltip: {
+      trigger: "axis",
+      backgroundColor: "rgba(8, 13, 22, 0.92)",
+      borderColor: "rgba(127, 240, 232, 0.4)",
+      textStyle: { color: "#f3f7fb", fontSize: 11 }
+    },
     legend: {
       data: [
         "MODIS Aqua Real (Referencia)",
-        "VIIRS S-NPP Armonizado (Convertido a Aqua)",
-        "VIIRS S-NPP Crudo (Salto artificial +185%)"
+        "VIIRS S-NPP Armonizado (Equivalente Aqua)",
+        "VIIRS S-NPP Crudo (Salto +185%)"
       ],
-      textStyle: { color: "#cbd5e1" }
+      textStyle: { color: "#cbd5e1", fontSize: 10.5 },
+      top: 0
     },
-    grid: { top: 42, bottom: 65, left: 60, right: 25 },
+    grid: { top: 34, bottom: 52, left: 54, right: 18 },
     dataZoom: [
       { type: "inside", start: 0, end: 100 },
-      { type: "slider", bottom: 10, height: 22, textStyle: { color: "#cbd5e1" } }
+      { type: "slider", bottom: 6, height: 18, textStyle: { color: "#cbd5e1" } }
     ],
     xAxis: {
       type: "category",
       data: xLabels,
-      axisLabel: { color: "#cbd5e1" }
+      axisLabel: { color: "#cbd5e1", fontSize: 10 }
     },
     yAxis: {
       type: "value",
-      name: "Celdas-día / mes (Bolivia)",
-      nameTextStyle: { color: "#94a3b8" },
-      axisLabel: { color: "#cbd5e1" },
-      splitLine: { lineStyle: { color: "#334155" } }
+      name: "Celdas-día / mes",
+      nameTextStyle: { color: "#94a3b8", fontSize: 10 },
+      axisLabel: { color: "#94a3b8", fontSize: 10 },
+      splitLine: { lineStyle: { color: "rgba(255,255,255,0.07)" } }
     },
     series: [
       {
-        name: "VIIRS S-NPP Crudo (Salto artificial +185%)",
+        name: "VIIRS S-NPP Crudo (Salto +185%)",
         type: "line",
         data: snppRawData,
-        lineStyle: { color: "#ef4444", width: 1.4, type: "dotted" },
+        lineStyle: { color: "#ef4444", width: 1.3, type: "dotted" },
         itemStyle: { color: "#ef4444" },
         symbol: "none"
       },
@@ -771,16 +937,16 @@ function renderValidationChart() {
         name: "MODIS Aqua Real (Referencia)",
         type: "line",
         data: aquaData,
-        lineStyle: { color: "#38bdf8", width: 2.2 },
-        itemStyle: { color: "#38bdf8" },
+        lineStyle: { color: "#4aa8ff", width: 2.1 },
+        itemStyle: { color: "#4aa8ff" },
         symbol: "none"
       },
       {
-        name: "VIIRS S-NPP Armonizado (Convertido a Aqua)",
+        name: "VIIRS S-NPP Armonizado (Equivalente Aqua)",
         type: "line",
         data: snppConvData,
-        lineStyle: { color: "#22c55e", width: 2.2 },
-        itemStyle: { color: "#22c55e" },
+        lineStyle: { color: "#7ff0e8", width: 2.1 },
+        itemStyle: { color: "#7ff0e8" },
         symbol: "none"
       }
     ]
@@ -803,8 +969,40 @@ function renderFactorsGrid() {
 }
 
 /* =========================================================================
- * 6. Descarga de CSV (Serie del AOI y Celdas-Mes)
+ * 7. Navegación del Escenario Central y Descarga CSV
  * ========================================================================= */
+function switchStage(stageId) {
+  state.activeStage = stageId;
+
+  document.querySelectorAll(".nav-pill").forEach((btn) => {
+    btn.classList.toggle("on", btn.dataset.view === stageId);
+  });
+
+  document.querySelectorAll(".stage-pane").forEach((pane) => {
+    pane.classList.toggle("active", pane.id === stageId);
+  });
+
+  const info = STAGE_META[stageId] || STAGE_META["stage-calendar"];
+  document.getElementById("stageEyebrow").textContent = info.eyebrow;
+  document.getElementById("stageTitle").textContent = info.title;
+
+  const quickBtn = document.getElementById("btnQuickSwitchMap");
+  if (stageId === "stage-map") {
+    quickBtn.textContent = "Volver al Calendario";
+    moveMapToStage(true);
+  } else {
+    quickBtn.textContent = "Dibujar AOI en Mapa";
+    moveMapToStage(false);
+  }
+
+  setTimeout(() => {
+    if (chartCalendar) chartCalendar.resize();
+    if (chartSeasonal) chartSeasonal.resize();
+    if (chartAnnual) chartAnnual.resize();
+    if (chartValidation) chartValidation.resize();
+  }, 50);
+}
+
 function triggerCsvDownload(filename, csvContent) {
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -877,14 +1075,14 @@ function downloadAoiCellsCsv() {
 }
 
 /* =========================================================================
- * 7. Eventos de interfaz e inicialización
+ * 8. Eventos de interfaz e inicialización
  * ========================================================================= */
 function syncBboxInputsFromPolygon(poly) {
   const [minLon, minLat, maxLon, maxLat] = turf.bbox(poly);
   document.getElementById("inLatMin").value = minLat.toFixed(2);
   document.getElementById("inLatMax").value = maxLat.toFixed(2);
   document.getElementById("inLonMin").value = minLon.toFixed(2);
-  document.getElementById("inLonMax").value = maxLon.toFixed(2);
+  document.getElementById("inLonMax").value = maxLat.toFixed(2);
 }
 
 function resetToPreset(presetName) {
@@ -912,6 +1110,28 @@ function populateYearSelectors() {
 }
 
 function bindEvents() {
+  document.querySelectorAll(".nav-pill").forEach((btn) => {
+    btn.addEventListener("click", () => switchStage(btn.dataset.view));
+  });
+
+  document.getElementById("btnQuickSwitchMap").addEventListener("click", () => {
+    switchStage(state.activeStage === "stage-map" ? "stage-calendar" : "stage-map");
+  });
+
+  document.getElementById("btnExpandMap").addEventListener("click", () => {
+    switchStage(state.activeStage === "stage-map" ? "stage-calendar" : "stage-map");
+  });
+
+  document.querySelectorAll("[data-goto]").forEach((el) => {
+    el.addEventListener("click", () => switchStage(el.dataset.goto));
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        switchStage(el.dataset.goto);
+      }
+    });
+  });
+
   document.getElementById("presetRegion").addEventListener("change", (e) => {
     resetToPreset(e.target.value);
   });
@@ -926,13 +1146,16 @@ function bindEvents() {
     const lonMin = parseFloat(document.getElementById("inLonMin").value);
     const lonMax = parseFloat(document.getElementById("inLonMax").value);
     if ([latMin, latMax, lonMin, lonMax].some(Number.isNaN) || latMin >= latMax || lonMin >= lonMax) {
-      alert("Ingresa un rango válido de Latitud (Sur < Norte) y Longitud (Oeste < Este).");
+      const warnBar = document.getElementById("aoiWarning");
+      document.getElementById("aoiWarningText").textContent =
+        "Ingresa un rango BBox válido: Latitud Sur menor que Latitud Norte y Longitud Oeste menor que Longitud Este.";
+      warnBar.classList.remove("hidden");
       return;
     }
     const poly = turf.bboxPolygon([lonMin, latMin, lonMax, latMax]);
     drawnItems.clearLayers();
     const layer = L.geoJSON(poly, {
-      style: { color: "#38bdf8", weight: 2, fillOpacity: 0.15 }
+      style: { color: "#7ff0e8", weight: 2, fillOpacity: 0.16 }
     });
     drawnItems.addLayer(layer);
     map.fitBounds(layer.getBounds());
@@ -986,24 +1209,6 @@ function bindEvents() {
   document.getElementById("btnDownloadSeries").addEventListener("click", downloadAoiSeriesCsv);
   document.getElementById("btnDownloadCells").addEventListener("click", downloadAoiCellsCsv);
 
-  // Pestañas
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-      document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
-      btn.classList.add("active");
-      const target = document.getElementById(btn.dataset.tab);
-      if (target) target.classList.add("active");
-
-      setTimeout(() => {
-        if (chartCalendar) chartCalendar.resize();
-        if (chartSeasonal) chartSeasonal.resize();
-        if (chartAnnual) chartAnnual.resize();
-        if (chartValidation) chartValidation.resize();
-      }, 50);
-    });
-  });
-
   window.addEventListener("resize", () => {
     if (chartCalendar) chartCalendar.resize();
     if (chartSeasonal) chartSeasonal.resize();
@@ -1018,12 +1223,15 @@ function bindEvents() {
     initMap();
     bindEvents();
     await loadAllData();
+    populateScienceRailFromMeta();
+    renderSubregionBars();
     renderFactorsGrid();
     recomputeAoiSelection();
   } catch (err) {
     console.error("Error inicializando la aplicación:", err);
-    const warnEl = document.getElementById("aoiWarning");
-    warnEl.textContent = "Error cargando data/processed/. Asegúrate de abrir la app mediante un servidor local (ej. python3 -m http.server 8000).";
-    warnEl.classList.remove("hidden");
+    const warnBar = document.getElementById("aoiWarning");
+    document.getElementById("aoiWarningText").textContent =
+      "Error cargando data/processed/. Abre la aplicación mediante un servidor local (ej. python3 -m http.server 8000).";
+    warnBar.classList.remove("hidden");
   }
 })();
