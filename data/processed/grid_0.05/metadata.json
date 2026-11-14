@@ -1,0 +1,125 @@
+{
+  "region": "Bolivia",
+  "bbox": [
+    -69.6201,
+    -22.87,
+    -57.4668,
+    -9.68
+  ],
+  "cell_size_deg": 0.05,
+  "temporal_resolution": "monthly",
+  "date_range": [
+    "2003-01",
+    "2025-12"
+  ],
+  "provisional_range": [],
+  "baseline_years": [
+    2003,
+    2025
+  ],
+  "unit": "celdas-día con fuego (equivalente MODIS Aqua)",
+  "sensors": {
+    "reference": "MODIS Aqua (MYD14 / MCD14ML)",
+    "converted": "VIIRS Suomi-NPP 375 m (VNP14IMGML)"
+  },
+  "sensor_coverage": {
+    "aqua": [
+      "2003-01",
+      "2025-12"
+    ],
+    "snpp": [
+      "2012-02",
+      "2025-12"
+    ]
+  },
+  "calibration_period": [
+    "2012-02",
+    "2021-12"
+  ],
+  "excluded_months": [
+    "2012-01",
+    "2020-08",
+    "2020-09"
+  ],
+  "harmonized_source_switch": "2022-01",
+  "factors_by_month": {
+    "1": 0.218386,
+    "2": 0.218543,
+    "3": 0.238402,
+    "4": 0.243423,
+    "5": 0.27228,
+    "6": 0.299224,
+    "7": 0.341743,
+    "8": 0.35875,
+    "9": 0.340272,
+    "10": 0.292928,
+    "11": 0.227825,
+    "12": 0.215889
+  },
+  "factor_annual_fallback": 0.307065,
+  "validation_metrics": {
+    "threshold_pct": 15.0,
+    "train_2012_2016_test_2017_2021": {
+      "aqua_total": 97058.0,
+      "snpp_raw_total": 310294.0,
+      "snpp_harmonized_total": 92643.7,
+      "raw_bias_pct": 219.7,
+      "harmonized_bias_pct": -4.55,
+      "mae_monthly": 148.4
+    },
+    "train_2017_2021_test_2012_2016": {
+      "aqua_total": 72485.0,
+      "snpp_raw_total": 241847.0,
+      "snpp_harmonized_total": 76146.2,
+      "raw_bias_pct": 233.65,
+      "harmonized_bias_pct": 5.05,
+      "mae_monthly": 105.5
+    },
+    "full_2012_2021_in_sample": {
+      "aqua_total": 169543.0,
+      "snpp_raw_total": 552141.0,
+      "snpp_harmonized_total": 169543.0,
+      "raw_bias_pct": 225.66,
+      "harmonized_bias_pct": -0.0,
+      "mae_monthly": 101.8
+    },
+    "subregions_2012_2021": {
+      "chiquitania_llanos": {
+        "aqua_total": 83383.0,
+        "snpp_raw_total": 281318.0,
+        "snpp_harmonized_total": 85299.1,
+        "raw_bias_pct": 237.38,
+        "harmonized_bias_pct": 2.3,
+        "mae_monthly": 66.8
+      },
+      "amazonia_beni_norte": {
+        "aqua_total": 44398.0,
+        "snpp_raw_total": 121572.0,
+        "snpp_harmonized_total": 38473.7,
+        "raw_bias_pct": 173.82,
+        "harmonized_bias_pct": -13.34,
+        "mae_monthly": 52.4
+      },
+      "andina_valles": {
+        "aqua_total": 41762.0,
+        "snpp_raw_total": 149251.0,
+        "snpp_harmonized_total": 45770.2,
+        "raw_bias_pct": 257.38,
+        "harmonized_bias_pct": 9.6,
+        "mae_monthly": 48.9
+      }
+    }
+  },
+  "filters": {
+    "type": [
+      0
+    ],
+    "modis_satellite": "Aqua",
+    "modis_confidence_min": 30,
+    "viirs_confidence": [
+      "n",
+      "h"
+    ]
+  },
+  "generated_on": "2026-11-14"
+}
