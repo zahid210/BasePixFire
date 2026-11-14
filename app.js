@@ -142,6 +142,52 @@ async function getGridRaw(res) {
   return window.PIXFIRE_GRIDS[res];
 }
 
+/** Último año con datos en la grilla activa (2026 si la grilla incluye ene–oct 2026, si no 2025). */
+function gridEndYear() {
+  const cov = state.meta && state.meta.sensor_coverage && state.meta.sensor_coverage.aqua;
+  return cov ? parseInt(cov[1].slice(0, 4), 10) : 2026;
+}
+
+/**
+ * Ajusta los selectores de año a la grilla activa: si la grilla no tiene 2026, ese año
+ * no se puede elegir y el rango/año elegido pasan a 2025. Al volver a una grilla con 2026,
+ * se restaura lo que había.
+ */
+function applyGridYearLimits() {
+  const end = gridEndYear();
+  ["focusYear", "yearStart", "yearEnd"].forEach((id) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    Array.from(sel.options).forEach((opt) => {
+      opt.disabled = parseInt(opt.value, 10) > end;
+    });
+  });
+  if (end < 2026) {
+    if (state.yearEnd > end) {
+      state._yearEndBeforeLimit = state.yearEnd;
+      state.yearEnd = end;
+    }
+    if (state.yearStart > end) state.yearStart = end;
+    if (state.focusYear > end) {
+      state._focusYearBeforeLimit = state.focusYear;
+      state.focusYear = end;
+    }
+  } else {
+    if (state._yearEndBeforeLimit) state.yearEnd = state._yearEndBeforeLimit;
+    if (state._focusYearBeforeLimit) state.focusYear = state._focusYearBeforeLimit;
+    state._yearEndBeforeLimit = null;
+    state._focusYearBeforeLimit = null;
+  }
+  const setVal = (id, v) => {
+    const sel = document.getElementById(id);
+    if (sel) sel.value = String(v);
+  };
+  setVal("yearStart", state.yearStart);
+  setVal("yearEnd", state.yearEnd);
+  setVal("focusYear", state.focusYear);
+  syncFocusMonthOptions();
+}
+
 /** Activa una grilla: sus celdas, su serie de validación y sus metadatos (factores y métricas). */
 async function loadAllData(resKey) {
   if (resKey) state.gridRes = resKey;
@@ -609,12 +655,14 @@ function buildSparklineSvg(totals, years) {
 function openCellPopup(cell, latlng) {
   if (isDrawing || !map) return;
 
+  const lastYear = gridEndYear();
   const years = [];
-  for (let y = 2003; y <= 2026; y++) years.push(y);
+  for (let y = 2003; y <= lastYear; y++) years.push(y);
   const totals = years.map(() => 0);
-  for (const r of cell.records) totals[r.year - 2003] += r.harm;
+  for (const r of cell.records) if (r.year <= lastYear) totals[r.year - 2003] += r.harm;
 
-  const full = totals.slice(0, totals.length - 1); // 2003–2025 (años completos)
+  // Años completos (2026 solo tiene ene–oct, así que no entra en el promedio ni en el "peor año")
+  const full = lastYear === 2026 ? totals.slice(0, totals.length - 1) : totals;
   const peakIdx = full.indexOf(Math.max(...full));
   const avg = full.reduce((a, b) => a + b, 0) / full.length;
   const cs = state.meta ? state.meta.cell_size_deg : 0.25;
@@ -626,7 +674,7 @@ function openCellPopup(cell, latlng) {
     <div class="cp-title">${t("cp.title")}</div>
     <div class="cp-sub">${t(`sub.${cell.subregion}`)} · ${t("cp.square.km", { km: kmLabel })}</div>
     ${buildSparklineSvg(totals, years)}
-    <div class="cp-axis"><span>2003</span><span>2026*</span></div>
+    <div class="cp-axis"><span>2003</span><span>${lastYear}${lastYear === 2026 ? "*" : ""}</span></div>
     <div class="cp-stats">
       <div><span>${t("cp.avg")}</span><b>${t("cp.days", { v: fmtDays(avg) })}</b></div>
       <div><span>${t("cp.peak")}</span><b>${years[peakIdx]} (${t("cp.days", { v: fmtDays(full[peakIdx]) })})</b></div>
@@ -713,6 +761,9 @@ function recomputeAoiSelection() {
     }
   }
 
+  if (gridEndYear() < 2026) {
+    warnings.push(t("warn.gridNo2026", { deg: fmtNum(state.meta.cell_size_deg, 2), end: gridEndYear() }));
+  }
   if (count === 0) {
     warnings.push(t("warn.empty"));
   } else if (count < 4) {
@@ -1709,20 +1760,23 @@ function renderMlProjectionChart(ml) {
     return s;
   });
 
-  const histVals = [...histByYear.values()];
+  // 2026 solo tiene ene–oct: no se completa ni entra en el promedio; se dibuja aparte como dato parcial
+  const partialYear = ml.forecast_year;
+  const lastFull = partialYear - 1;
+  const histVals = [...histByYear.entries()].filter(([y]) => y <= lastFull).map(([, v]) => v);
   const histAvg = histVals.length ? histVals.reduce((x, v) => x + v, 0) / histVals.length : 0;
   const idx = (y) => years.indexOf(y);
   const hist = years.map((y) => (histByYear.has(y) ? Number(histByYear.get(y).toFixed(1)) : null));
-  // Une la línea de historia con la proyección
-  const lastHist = firstProj - 1;
+  // La proyección arranca del último año completo (2025) y salta 2026, que es parcial
   const central = years.map((y) => {
-    if (y === lastHist) return hist[idx(y)];
+    if (y === lastFull) return hist[idx(y)];
     const k = projYears.indexOf(y);
     if (k < 0) return null;
     return Number((projRows ? projRows[k].p50 : meanByYear[k]).toFixed(1));
   });
 
   const nameObs = t("ml.proj.obs");
+  const namePartial = t("ml.proj.partial", { y: partialYear, m: MONTH_NAMES[ml.forecast_observed_through_month - 1].toLowerCase() });
   const nameCentral = presetKey ? t("ml.proj.median") : t("ml.proj.mean");
   const name80 = t("ml.proj.b80");
   const name90 = t("ml.proj.b90");
@@ -1752,7 +1806,7 @@ function renderMlProjectionChart(ml) {
     animation: false,
     textStyle: { fontFamily: "Sora, sans-serif" },
     title: { text: t("ml.proj.title", { end: lastProj, area }), left: 0, top: 0, textStyle: { fontSize: 11, fontWeight: 600 } },
-    legend: { top: 18, left: 0, itemWidth: 14, textStyle: { fontSize: 9.5 }, data: [nameObs, nameCentral, ...(presetKey ? [name80, name90] : [])] },
+    legend: { top: 18, left: 0, itemWidth: 14, textStyle: { fontSize: 9.5 }, data: [nameObs, namePartial, nameCentral, ...(presetKey ? [name80, name90] : [])] },
     grid: { left: 48, right: 14, top: 52, bottom: 26 },
     tooltip: {
       ...TOOLTIP_STYLE,
@@ -1761,7 +1815,8 @@ function renderMlProjectionChart(ml) {
         const y = years[ps[0].dataIndex];
         const k = projYears.indexOf(y);
         let html = `<b>${y}</b>`;
-        if (hist[idx(y)] !== null && y < firstProj) html += `<br>${t("ml.proj.tip.obs", { v: fmtDays(hist[idx(y)]) })}`;
+        if (hist[idx(y)] !== null && y <= lastFull) html += `<br>${t("ml.proj.tip.obs", { v: fmtDays(hist[idx(y)]) })}`;
+        if (y === partialYear && hist[idx(y)] !== null) html += `<br>${namePartial}: <b>${fmtDays(hist[idx(y)])}</b>`;
         if (k >= 0) {
           if (projRows) {
             const r = projRows[k];
@@ -1769,10 +1824,6 @@ function renderMlProjectionChart(ml) {
               `<br>${name80}: ${fmtDays(r.p10)} – ${fmtDays(r.p90)}<br>${name90}: ${fmtDays(r.p05)} – ${fmtDays(r.p95)}`;
           } else {
             html += `<br>${t("ml.proj.tip.mean", { v: fmtDays(meanByYear[k]) })}`;
-          }
-          if (y === ml.forecast_year) {
-            const m = MONTH_NAMES[ml.forecast_observed_through_month - 1];
-            html += `<br><span style='color:#94a3b8'>${t("ml.proj.tip.partial", { y, m })}</span>`;
           }
         }
         return html;
@@ -1784,7 +1835,7 @@ function renderMlProjectionChart(ml) {
       ...bandSeries,
       {
         name: nameObs, type: "line", color: ML_COLORS.obs, symbolSize: 4, lineStyle: { width: 2 },
-        data: hist.map((v, i) => (years[i] < firstProj ? v : null)),
+        data: hist.map((v, i) => (years[i] <= lastFull ? v : null)),
         // Referencia: promedio anual 2003–2025 (la "climatología" contra la que se compara el modelo)
         markLine: {
           symbol: "none", silent: true,
@@ -1795,8 +1846,13 @@ function renderMlProjectionChart(ml) {
       },
       {
         name: nameCentral, type: "line", color: ML_COLORS.intensity, symbolSize: 5,
-        lineStyle: { width: 2, type: "dashed" }, data: central,
+        lineStyle: { width: 2, type: "dashed" }, data: central, connectNulls: true,
         markArea: { silent: true, itemStyle: { color: "rgba(148,163,184,0.08)" }, data: [[{ xAxis: String(firstProj) }, { xAxis: String(lastProj) }]] }
+      },
+      {
+        // 2026 ene–oct: punto hueco, sin unir a la serie (no es un año completo)
+        name: namePartial, type: "scatter", color: ML_COLORS.obs, symbol: "emptyCircle", symbolSize: 8,
+        data: years.map((y, i) => (y === partialYear ? hist[i] : null)), tooltip: { show: false }
       }
     ]
   }, true);
@@ -2450,6 +2506,7 @@ function bindEvents() {
       gridSel.disabled = true;
       try {
         await loadAllData(newRes);
+        applyGridYearLimits();
         if (gridLayerGroup) gridLayerGroup.clearLayers();
         cellLayers.clear();
         const harmEl = document.getElementById("harmView");

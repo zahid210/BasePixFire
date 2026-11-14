@@ -142,6 +142,7 @@ const I18N = {
     "warn.empty": "En la zona elegida no hay fuego registrado. Prueba con una zona más grande.",
     "warn.small": "La zona es muy pequeña: los números cambian mucho de un mes a otro y conviene leerlos con cuidado.",
     "warn.initError": "Error al inicializar datos: ",
+    "warn.gridNo2026": "La grilla de {deg}° todavía llega solo hasta {end}: faltan procesar los datos de 2026. Para ver 2026 usa la grilla de 0,25°.",
 
     // Resumen
     "sum.aria": "Resumen y gráficos",
@@ -314,7 +315,7 @@ const I18N = {
     "ml.proj.tip.obs": "Observado: <b>{v}</b> días con fuego",
     "ml.proj.tip.median": "Mediana: <b>{v}</b>",
     "ml.proj.tip.mean": "Media simulada: <b>{v}</b>",
-    "ml.proj.tip.partial": "{y}: ene–{m} observado + resto simulado",
+    "ml.proj.partial": "{y} parcial (solo ene–{m})",
     "ml.year.label": "AÑO PROYECTADO EN EL MAPA",
     "ml.year.btn": "Ver en el mapa",
     "ml.aria.proj": "Serie anual observada y proyección hasta 2030 con bandas de incertidumbre",
@@ -446,6 +447,7 @@ const I18N = {
     "warn.empty": "No fire has been recorded in the chosen area. Try a larger area.",
     "warn.small": "The area is very small: numbers change a lot from month to month, so read them with care.",
     "warn.initError": "Error loading data: ",
+    "warn.gridNo2026": "The {deg}° grid currently only goes up to {end}: the 2026 data still has to be processed. Use the 0.25° grid to see 2026.",
 
     "sum.aria": "Summary and charts",
     "sum.unit": "fire days",
@@ -610,7 +612,7 @@ const I18N = {
     "ml.proj.tip.obs": "Observed: <b>{v}</b> fire days",
     "ml.proj.tip.median": "Median: <b>{v}</b>",
     "ml.proj.tip.mean": "Simulated mean: <b>{v}</b>",
-    "ml.proj.tip.partial": "{y}: Jan–{m} observed + rest simulated",
+    "ml.proj.partial": "{y} partial (Jan–{m} only)",
     "ml.year.label": "PROJECTED YEAR ON THE MAP",
     "ml.year.btn": "Show on the map",
     "ml.aria.proj": "Observed annual series and projection to 2030 with uncertainty bands",

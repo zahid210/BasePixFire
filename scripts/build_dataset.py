@@ -241,6 +241,12 @@ def main() -> None:
     args = parser.parse_args()
 
     allowed_years = set(range(args.start_year, args.end_year + 1))
+    # 2026 solo se incluye si existen sus CSV (Archive Download): si faltan, los metadatos
+    # deben decir que los datos llegan hasta end_year, no inventar cobertura 2026.
+    has_2026_files = any((RAW_DIR / "2026").glob("*.csv")) if (RAW_DIR / "2026").exists() else False
+    if args.include_2026 and not has_2026_files:
+        print("AVISO: no hay CSV de 2026 en data/raw/2026/; el dataset llegará hasta", args.end_year)
+    args.include_2026 = args.include_2026 and has_2026_files
     if args.include_2026:
         allowed_years.add(2026)
 
