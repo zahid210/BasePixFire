@@ -1,0 +1,6 @@
+# Dependencias de Python del pipeline y del modelo ML (versiones probadas, Python 3.12)
+# Instalar: python -m pip install -r requirements.txt
+numpy==1.26.4
+pandas==2.2.3
+scikit-learn==1.5.2
+statsmodels==0.14.4

@@ -94,3 +94,60 @@ Para no caer en una validación circular (calibrar y evaluar con los mismos dato
 > *"MODIS y VIIRS no se pueden sumar directamente porque el píxel de VIIRS es siete veces más pequeño en área y detecta muchos más fuegos pequeños; si los juntamos en crudo, en 2012 aparece un salto falso enorme.*
 > *Nosotros lo resolvimos en tres capas físicas antes de ajustar un solo número: primero elegimos **MODIS Aqua y VIIRS Suomi-NPP**, porque ambos pasan exactamente a la **1:30 de la tarde**, eliminando el sesgo por hora del día. Segundo, filtramos fuentes industriales y falsas alarmas de baja confianza según las guías oficiales de NASA. Tercero, pasamos los puntos a una **grilla común de 0,25° y contamos celdas-día con fuego**, de modo que un incendio grande visto como 15 píxeles en VIIRS y 2 en MODIS cuente igual en ambos.*
 > *Finalmente, calibramos la diferencia restante por mes del año usando el traslape limpio de **2012 a 2021** —antes de que Aqua empezara a derivar de órbita en 2022— y lo validamos entrenando en una mitad de los años y probando en la otra mitad."*
+
+---
+
+## 5. Modelo de Machine Learning: ¿persistencia o acumulación de combustible?
+
+Script: `scripts/ml_model.py` → `data/processed/ml_results.json` y `data/processed/ml_bundle.js` (pestaña **Modelo ML** y modo de mapa **Riesgo ML 2026** en la web). La web no entrena nada: solo lee los resultados.
+
+### 5.1 Pregunta
+1. ¿La historia reciente de una celda predice su fuego mejor que su "normal" histórico (climatología)?
+2. Dos hipótesis opuestas:
+   - **Persistencia:** donde hubo fuego el año pasado vuelve a haber (p. ej., quema agrícola o chaqueo repetida en las mismas parcelas).
+   - **Acumulación:** tras muchos años sin fuego se acumula combustible y el fuego, cuando llega, es mayor.
+
+### 5.2 Por qué no una distribución normal
+La variable es un **conteo** (celdas-día con fuego por celda y mes): no es negativa, la mayoría de valores son 0 (≈80 % en entrenamiento) y la varianza es varias veces la media (**sobredispersión**). Por eso se usan modelos de conteo:
+- **Binomial negativa** (GLM): conteos sobredispersos. Es el modelo de pronóstico explicable.
+- **Hurdle en dos partes** (para explicar): (a) **ocurrencia**, ¿hay fuego? (regresión logística); (b) **intensidad**, si hay fuego, ¿cuántas celdas-día? (binomial negativa sobre los meses con fuego). Esto separa las dos hipótesis: la persistencia actúa sobre la ocurrencia y la acumulación sobre la intensidad.
+- **Gradient boosting con pérdida Poisson** (scikit-learn): capta relaciones no lineales. Solo se usa para comparar capacidad predictiva.
+
+### 5.3 Variables (solo información hasta el año anterior → pronóstico de pretemporada, sin fuga de datos)
+| Variable | Qué mide |
+|---|---|
+| Mes (categórica) | Estacionalidad |
+| `log(1 + climatología)` | Promedio histórico de la celda en ese mes (2003 hasta el año anterior) |
+| `log(1 + mismo mes del año anterior)` | Persistencia de corto plazo |
+| Años desde el último fuego (1, 2, 3, 4–5, 6+) | Persistencia frente a acumulación. Referencia: "ardió el año pasado" |
+| `log(1 + fuego en las 8 celdas vecinas el año anterior)` | Contagio espacial |
+
+"Hubo fuego en el año" se define como **≥ 1 celda-día equivalente Aqua**. Con datos VIIRS (2022+) este umbral evita contar como quemada una celda con una sola detección S-NPP, que equivale a ~0,3 celdas-día Aqua.
+
+### 5.4 Validación
+- Temporal, **no aleatoria**: entrenamiento 2009–2016 (2003–2008 solo sirven como historia), prueba **2017–2021** (era Aqua pura; se excluyen 2020-08 y 2020-09 por el apagón).
+- **Línea base a superar:** la climatología de la celda (lo que ya muestra la app).
+- Métricas: deviance de Poisson (error adecuado para conteos), AUC (¿distingue celdas-mes con y sin fuego?), error absoluto medio del total mensual de Bolivia y sesgo total.
+- Prueba provisional: pronóstico de 2026 (ene–oct) con el modelo reentrenado en 2009–2021.
+
+Los resultados numéricos están en `data/processed/ml_results.json` y en la pestaña **Modelo ML**. Se recalculan al correr el script y no se copian a mano en este documento.
+
+### 5.5 Lectura de los resultados (corrida del 14/11/2026, 1570 celdas)
+- **Persistencia:** confirmada para la ocurrencia. Comparadas con una celda que ardió el año pasado, las *odds* de fuego caen de forma monótona con los años sin fuego, aun controlando por la climatología de la celda.
+- **Acumulación:** hay evidencia en la intensidad. Cuando el fuego vuelve tras 6+ años, la celda acumula más celdas-día que una que ardió el año pasado. La relación no es perfectamente monótona (el grupo de 3 años sale más alto que el de 4–5 años), así que conviene leerla como tendencia, no como curva exacta.
+- **Predicción:** los modelos mejoran la deviance frente a la climatología celda a celda, pero **no mejoran el total mensual de Bolivia**. El valor del modelo está en **dónde** es más probable el fuego, no en cuánto fuego habrá en total.
+
+### 5.6 Limitaciones (importante decirlas ante el jurado)
+1. **Celdas-día ≠ tamaño del incendio.** Miden duración y extensión dentro de la celda de 0,25°, no el área quemada. Para "incendio mayor" en sentido estricto haría falta área quemada (p. ej., MCD64A1), que no está entre los recursos oficiales del reto.
+2. **"6+ años / sin registro" mezcla dos casos:** celdas que llevan mucho sin fuego y celdas sin fuego desde 2003. La historia empieza en 2003, así que no se puede medir más atrás.
+3. **Asociación, no causalidad.** La persistencia puede deberse a prácticas de uso del suelo, no al fuego en sí. La acumulación puede confundirse con el tipo de vegetación de la celda.
+4. **Universo de celdas:** solo las 1570 celdas con al menos una detección en todo el registro; las celdas que nunca ardieron no entran.
+5. **2026 es provisional:** las variables 2022–2025 vienen de VIIRS armonizado. El factor k_m corrige totales, no la presencia por celda (VIIRS ve fuegos pequeños que Aqua no). Además, 2026 fue un año de poco fuego frente a su historia y todos los modelos lo sobreestiman.
+6. **Sin clima:** no se usan lluvia, sequía ni ENSO (fuera de los recursos oficiales). Es la mejora más clara para una versión futura.
+
+### 5.7 Cómo reproducir
+```bash
+python -m pip install -r requirements.txt
+python scripts/ml_model.py --sample-cells 150 --out-dir /tmp   # prueba rápida
+python scripts/ml_model.py                                      # completo (unos minutos)
+```
