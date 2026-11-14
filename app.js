@@ -1970,6 +1970,7 @@ function harmResultCard(title, m, threshold) {
     </div>`;
 }
 
+/** Ojo: la calibración se hizo en la grilla base (state.baseMeta, 0,25°), no en la grilla que se ve en el mapa. */
 function buildHarmSteps(meta) {
   const vm = meta.validation_metrics;
   const full = vm.full_2012_2021_in_sample;
@@ -1994,7 +1995,7 @@ function buildHarmSteps(meta) {
       <div class="harm-step">
         <span class="harm-n">3</span>
         <b>${t("harm.s3.t")}</b>
-        <p>${t("harm.s3.d", { deg: fmtNum(meta.cell_size_deg, 2) })}</p>
+        <p>${t("harm.s3.d", { deg: fmtNum((state.baseMeta || meta).cell_size_deg, 2) })}</p>
       </div>
       <div class="harm-step">
         <span class="harm-n">4</span>
