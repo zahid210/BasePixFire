@@ -189,7 +189,7 @@
             <div class="big">
               <span class="big-val" id="sumValue">—</span>
               <span class="big-unit">
-                <span data-i18n="sum.unit">días con fuego</span>
+                <span data-i18n="sum.unit">cuadros-día con fuego</span>
                 <button type="button" id="btnInfoUnit" class="info-btn" aria-expanded="false" aria-controls="infoUnit" title="¿Qué significa?" data-i18n-title="sum.info.title">?</button>
               </span>
             </div>
@@ -210,10 +210,10 @@
           <p id="sumSentence" class="summary-sentence"></p>
 
           <p id="infoUnit" class="info-pop hidden" data-i18n-html="sum.info.html">
-            <b>¿Qué es un “día con fuego”?</b> Dividimos Bolivia en cuadros de unos 27 km de lado. Cada cuadro suma 1 por cada día en que
-            el satélite vio fuego en él, y aquí se suman todos los cuadros de la zona. Mide cuánto y por cuánto tiempo hubo fuego:
-            <b>no es el número de incendios ni la superficie quemada</b>. “Lo normal” es el rango en que cayó la mitad central de
-            los años 2003–2025 para ese mismo mes.
+            <b>¿Qué es un “cuadro-día con fuego”?</b> Dividimos Bolivia en una grilla de cuadros (de ~27 km en la vista estándar).
+            En el mapa, cada cuadro muestra cuántos <b>días con fuego</b> tuvo. En este resumen se suman todos los cuadros de la zona
+            elegida (cuadros × días = <b>cuadros-día</b>, o <i>celdas-día</i>): mide cuánto se extendió y cuántos días duró el fuego,
+            <b>no el número de incendios ni las hectáreas quemadas</b>. “Lo normal” es el rango central (P25–P75) de los años 2003–2025 para ese mismo mes.
           </p>
 
           <button type="button" id="btnTrust" class="trust-link">
@@ -286,8 +286,8 @@
   <script src="data/processed/ml_bundle.js?v=main4"></script>
 
   <!-- Textos ES/EN (debe cargarse antes de app.js) -->
-  <script src="i18n.js?v=main4"></script>
+  <script src="i18n.js?v=main5"></script>
   <!-- Lógica y renderizado cliente -->
-  <script src="app.js?v=main4"></script>
+  <script src="app.js?v=main5"></script>
 </body>
 </html>
