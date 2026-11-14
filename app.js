@@ -36,7 +36,7 @@ const state = {
   focusYear: 2026,
   focusMonth: 10,
   compareSensors: false, // muestra las líneas de cada satélite en "Evolución"
-  activeView: "calendar", // calendar | series | seasonal | ranking | ml
+  activeView: "calendar", // calendar | harm | series | seasonal | ranking | ml
   mapMode: "period", // period (promedio del rango) | month (mes evaluado) | ml (proyección ML)
   mlYear: 2030, // año de la proyección ML que se pinta en el mapa
   gridRes: "0.25", // tamaño de celda en grados: "0.25" | "0.10" | "0.05"
@@ -63,6 +63,8 @@ let chartSeasonal = null;
 let chartMlEffects = null;
 let chartMlPower = null;
 let chartMlProjection = null;
+let chartHarmFactors = null;
+let chartHarmValidation = null;
 let layersControl = null; // control de capas (se rehace al cambiar de idioma)
 let drawControl = null; // herramientas de dibujo (se rehacen al cambiar de idioma)
 let baseLayers = null;
@@ -950,6 +952,7 @@ function setFocus(year, month) {
  * ========================================================================= */
 const VIEW_TEXTS = {
   calendar: { title: () => t("view.calendar.title"), help: () => t("view.calendar.help") },
+  harm: { title: () => t("view.harm.title"), help: () => t("view.harm.help") },
   series: { title: () => t("view.series.title"), help: () => t("view.series.help") },
   seasonal: { title: () => t("view.seasonal.title", { year: state.focusYear }), help: () => t("view.seasonal.help") },
   ranking: { title: () => t("view.ranking.title"), help: () => t("view.ranking.help") },
@@ -968,7 +971,7 @@ function switchView(view) {
   });
   // "Imagen del gráfico" solo aplica a las vistas que son un gráfico
   const pngBtn = document.getElementById("btnPng");
-  if (pngBtn) pngBtn.disabled = view === "ranking" || view === "ml";
+  if (pngBtn) pngBtn.disabled = ["ranking", "ml", "harm"].includes(view);
   renderActiveView();
 }
 
@@ -995,6 +998,8 @@ function renderActiveView() {
     if (chartSeasonal) chartSeasonal.resize();
   } else if (state.activeView === "ranking") {
     renderRanking();
+  } else if (state.activeView === "harm") {
+    renderHarmPanel();
   } else if (state.activeView === "ml") {
     renderMlPanel();
   } else {
@@ -1936,6 +1941,243 @@ function renderMlPanel() {
 }
 
 /* =========================================================================
+ * 5f. Pestaña "Armonización": el proceso en 5 pasos y su validación
+ *
+ * Todas las cifras salen de metadata.json (factores y métricas) y de
+ * validation.csv (serie mensual de Bolivia). Nada está escrito a mano.
+ * ========================================================================= */
+const HARM_COLORS = { aqua: "#0284c7", raw: "#dc2626", corr: "#0f766e", ok: "#0f766e", bad: "#b91c1c" };
+
+/** Diferencia con signo y en el formato del idioma: "+177 %" / "+177%". */
+function signedPct(v, digits) {
+  return t("pct", { v: `${v > 0 ? "+" : ""}${fmtNum(v, digits)}` });
+}
+
+/** Tarjeta de resultado: sesgo crudo → sesgo corregido, con ✓ si cumple el umbral. */
+function harmResultCard(title, m, threshold) {
+  const ok = Math.abs(m.harmonized_bias_pct) <= threshold;
+  const reduction = (1 - Math.abs(m.harmonized_bias_pct) / Math.abs(m.raw_bias_pct)) * 100;
+  return `
+    <div class="harm-result ${ok ? "ok" : "bad"}">
+      <span class="harm-result-title">${title}</span>
+      <span class="harm-result-nums">
+        <b class="raw">${signedPct(m.raw_bias_pct, 0)}</b>
+        <span class="arrow">→</span>
+        <b class="corr">${signedPct(m.harmonized_bias_pct, 1)}</b>
+        <span class="mark">${ok ? "✓" : "✗"}</span>
+      </span>
+      <span class="harm-result-note">${t("harm.reduction", { pct: fmtNum(reduction, 0) })}</span>
+    </div>`;
+}
+
+function buildHarmSteps(meta) {
+  const vm = meta.validation_metrics;
+  const full = vm.full_2012_2021_in_sample;
+  const ratio = full.snpp_raw_total / full.aqua_total;
+  const factors = Object.values(meta.factors_by_month).map(Number);
+  const kMin = Math.min(...factors);
+  const kMax = Math.max(...factors);
+
+  return `
+    <p class="harm-lead">${t("harm.lead")}</p>
+    <div class="harm-steps">
+      <div class="harm-step">
+        <span class="harm-n">1</span>
+        <b>${t("harm.s1.t")}</b>
+        <p>${t("harm.s1.d", { ratio: fmtNum(ratio, 1), pct: signedPct(full.raw_bias_pct, 0) })}</p>
+      </div>
+      <div class="harm-step">
+        <span class="harm-n">2</span>
+        <b>${t("harm.s2.t")}</b>
+        <p>${t("harm.s2.d")}</p>
+      </div>
+      <div class="harm-step">
+        <span class="harm-n">3</span>
+        <b>${t("harm.s3.t")}</b>
+        <p>${t("harm.s3.d", { deg: fmtNum(meta.cell_size_deg, 2) })}</p>
+      </div>
+      <div class="harm-step">
+        <span class="harm-n">4</span>
+        <b>${t("harm.s4.t")}</b>
+        <p>${t("harm.s4.d", {
+          from: meta.calibration_period[0],
+          to: meta.calibration_period[1],
+          kmin: fmtNum(kMin, 2),
+          kmax: fmtNum(kMax, 2)
+        })}</p>
+      </div>
+      <div class="harm-step">
+        <span class="harm-n">5</span>
+        <b>${t("harm.s5.t")}</b>
+        <p>${t("harm.s5.d", { thr: fmtNum(vm.threshold_pct, 0) })}</p>
+      </div>
+    </div>`;
+}
+
+function buildHarmResults(meta) {
+  const vm = meta.validation_metrics;
+  const thr = vm.threshold_pct;
+  const subs = vm.subregions_2012_2021 || {};
+  const subCards = ["chiquitania_llanos", "amazonia_beni_norte", "andina_valles"]
+    .filter((k) => subs[k])
+    .map((k) => harmResultCard(t(`sub.${k}`), subs[k], thr))
+    .join("");
+  return `
+    <h4 class="harm-h">${t("harm.res.title", { thr: fmtNum(thr, 0) })}</h4>
+    <div class="harm-results">
+      ${harmResultCard(t("harm.res.a"), vm.train_2012_2016_test_2017_2021, thr)}
+      ${harmResultCard(t("harm.res.b"), vm.train_2017_2021_test_2012_2016, thr)}
+    </div>
+    <h4 class="harm-h">${t("harm.res.subs")}</h4>
+    <div class="harm-results three">${subCards}</div>
+    <p id="harmAoiLine" class="harm-aoi"></p>
+    <p class="rank-help harm-note">${t("harm.limits")}</p>`;
+}
+
+/** Paso 4: factor k_m de cada mes (cuánto vale 1 celda-día VIIRS en escala Aqua). */
+function renderHarmFactorsChart(meta) {
+  const dom = document.getElementById("chartHarmFactors");
+  if (!dom) return;
+  if (!chartHarmFactors) chartHarmFactors = echarts.init(dom);
+  const factors = [];
+  for (let m = 1; m <= 12; m++) factors.push(Number(meta.factors_by_month[String(m)]));
+
+  chartHarmFactors.setOption({
+    animation: false,
+    textStyle: { fontFamily: "Sora, sans-serif" },
+    title: { text: t("harm.k.title"), left: 0, top: 0, textStyle: { fontSize: 11, fontWeight: 600 } },
+    grid: { left: 40, right: 12, top: 30, bottom: 24 },
+    tooltip: {
+      ...TOOLTIP_STYLE,
+      trigger: "axis",
+      formatter: (ps) => `<b>${MONTH_FULL_NAMES[ps[0].dataIndex]}</b><br>` +
+        t("harm.k.tip", { k: fmtNum(ps[0].value, 3), inv: fmtNum(1 / ps[0].value, 1) })
+    },
+    xAxis: { type: "category", data: MONTH_NAMES, axisLabel: { fontSize: 9 }, axisTick: { show: false } },
+    yAxis: { type: "value", min: 0, axisLabel: { fontSize: 9, formatter: (v) => fmtNum(v, 2) }, splitLine: { lineStyle: { color: "#f1f5f9" } } },
+    series: [{
+      type: "bar", data: factors.map((v) => Number(v.toFixed(3))), barWidth: "55%",
+      itemStyle: { color: HARM_COLORS.corr }
+    }]
+  }, true);
+  chartHarmFactors.resize();
+}
+
+/** Paso 5: Aqua real vs. VIIRS crudo vs. VIIRS corregido (Bolivia, validation.csv). */
+function renderHarmValidationChart() {
+  const dom = document.getElementById("chartHarmValidation");
+  if (!dom) return;
+  if (!chartHarmValidation) chartHarmValidation = echarts.init(dom);
+
+  const rows = state.validationRows;
+  const labels = rows.map((r) => ymKey(r.year, r.month));
+  // Franjas según el papel de cada periodo en la calibración (columna "split")
+  const areaOf = {
+    calibration_a: { name: t("harm.v.calA"), color: "rgba(15, 118, 110, 0.07)" },
+    calibration_b: { name: t("harm.v.calB"), color: "rgba(2, 132, 199, 0.07)" },
+    drift: { name: t("harm.v.drift"), color: "rgba(245, 158, 11, 0.10)" }
+  };
+  const areas = [];
+  let cur = null;
+  rows.forEach((r, i) => {
+    const split = r.split === "excluded_outage" ? "calibration_b" : r.split;
+    const a = areaOf[split] ? split : null;
+    if (cur && cur.key !== a) {
+      areas.push([{ name: areaOf[cur.key].name, xAxis: cur.from, itemStyle: { color: areaOf[cur.key].color } }, { xAxis: labels[i - 1] }]);
+      cur = null;
+    }
+    if (a && !cur) cur = { key: a, from: labels[i] };
+  });
+  if (cur) areas.push([{ name: areaOf[cur.key].name, xAxis: cur.from, itemStyle: { color: areaOf[cur.key].color } }, { xAxis: labels[labels.length - 1] }]);
+
+  const prettyYm = (ym) => {
+    const [y, m] = ym.split("-").map((v) => parseInt(v, 10));
+    return `${MONTH_NAMES[m - 1]} ${y}`;
+  };
+  const startIdx = Math.max(0, labels.indexOf("2012-01"));
+  const endIdx = labels.indexOf("2021-12") >= 0 ? labels.indexOf("2021-12") : labels.length - 1;
+
+  chartHarmValidation.setOption({
+    animation: false,
+    textStyle: { fontFamily: "Sora, sans-serif" },
+    title: { text: t("harm.v.title"), left: 0, top: 0, textStyle: { fontSize: 11, fontWeight: 600 } },
+    legend: { top: 18, left: 0, itemWidth: 14, textStyle: { fontSize: 9.5 } },
+    grid: { left: 48, right: 14, top: 50, bottom: 44 },
+    tooltip: {
+      ...TOOLTIP_STYLE,
+      trigger: "axis",
+      formatter: (items) => {
+        let html = `<b>${prettyYm(items[0].axisValue)}</b>`;
+        items.forEach((it) => {
+          if (it.value === null || it.value === undefined) return;
+          html += `<br>${it.marker}${it.seriesName}: <b>${fmtDays(it.value)}</b>`;
+        });
+        return html;
+      }
+    },
+    xAxis: {
+      type: "category", data: labels, boundaryGap: false,
+      axisLabel: { fontSize: 9, interval: (i, v) => v.endsWith("-01"), formatter: (v) => v.slice(0, 4) }, axisTick: { show: false }
+    },
+    yAxis: { type: "value", axisLabel: { fontSize: 9, formatter: (v) => fmtNum(v, 0) }, splitLine: { lineStyle: { color: "#f1f5f9" } } },
+    dataZoom: [
+      { type: "inside", startValue: startIdx, endValue: endIdx },
+      { type: "slider", height: 12, bottom: 6, borderColor: "#e2e8f0", showDetail: false, startValue: startIdx, endValue: endIdx }
+    ],
+    series: [
+      {
+        name: t("series.modis"), type: "line", showSymbol: false, color: HARM_COLORS.aqua, lineStyle: { width: 2 },
+        data: rows.map((r) => r.aqua),
+        markArea: { silent: true, label: { fontSize: 9, color: "#475569", position: "insideTop" }, data: areas }
+      },
+      {
+        name: t("series.viirsRaw"), type: "line", showSymbol: false, color: HARM_COLORS.raw, lineStyle: { width: 1.3, opacity: 0.85 },
+        data: rows.map((r) => r.snpp_raw)
+      },
+      {
+        name: t("series.viirsCorr"), type: "line", showSymbol: false, color: HARM_COLORS.corr, lineStyle: { width: 1.8, type: "dashed" },
+        data: rows.map((r) => (r.snpp_harmonized === null ? null : Number(r.snpp_harmonized.toFixed(1))))
+      }
+    ]
+  }, true);
+  chartHarmValidation.resize();
+}
+
+/** Línea con la comprobación para la zona elegida (misma función que usa "Evolución"). */
+function updateHarmAoiLine() {
+  const el = document.getElementById("harmAoiLine");
+  if (!el) return;
+  const m = getValidationMetrics();
+  el.innerHTML = m
+    ? t("harm.aoi", { zone: zoneName(state.preset), scope: m.scope, raw: signedPct(m.raw_bias_pct, 0), harm: signedPct(m.harmonized_bias_pct, 1) })
+    : t("harm.aoi.none", { zone: zoneName(state.preset) });
+}
+
+function renderHarmPanel() {
+  const el = document.getElementById("harmView");
+  const meta = state.meta;
+  if (!el || !meta || !meta.validation_metrics) return;
+
+  // Se arma una vez (y de nuevo al cambiar de idioma); al cambiar de zona solo cambia la línea del AOI.
+  if (!el.dataset.built) {
+    el.innerHTML = `
+      ${buildHarmSteps(meta)}
+      <div class="harm-charts">
+        <div id="chartHarmValidation" class="harm-chart wide" role="img" aria-label="${t("harm.aria.v")}"></div>
+        <div id="chartHarmFactors" class="harm-chart" role="img" aria-label="${t("harm.aria.k")}"></div>
+      </div>
+      ${buildHarmResults(meta)}`;
+    el.dataset.built = "1";
+    [chartHarmFactors, chartHarmValidation].forEach((c) => c && c.dispose());
+    chartHarmFactors = null;
+    chartHarmValidation = null;
+  }
+  renderHarmValidationChart();
+  renderHarmFactorsChart(meta);
+  updateHarmAoiLine();
+}
+
+/* =========================================================================
  * 6. Calendario Térmico Interactivo con ECharts
  * ========================================================================= */
 function renderCalendarChart() {
@@ -2340,15 +2582,10 @@ function bindEvents() {
     });
   }
 
-  // "Ver cómo": abre Evolución mostrando la corrección entre satélites
+  // "Ver cómo": abre la pestaña Armonización (el proceso paso a paso)
   const trustBtn = document.getElementById("btnTrust");
   if (trustBtn) {
-    trustBtn.addEventListener("click", () => {
-      state.compareSensors = true;
-      const chk = document.getElementById("chkCompare");
-      if (chk) chk.checked = true;
-      switchView("series");
-    });
+    trustBtn.addEventListener("click", () => switchView("harm"));
   }
 
   const chkCompare = document.getElementById("chkCompare");
@@ -2386,7 +2623,7 @@ function bindEvents() {
 
 /** Reajusta gráficos y mapa cuando cambia el espacio disponible. */
 function refreshSizes() {
-  [chartCalendar, chartSeries, chartSeasonal, chartMlEffects, chartMlPower, chartMlProjection].forEach((c) => {
+  [chartCalendar, chartSeries, chartSeasonal, chartMlEffects, chartMlPower, chartMlProjection, chartHarmFactors, chartHarmValidation].forEach((c) => {
     if (c) c.resize();
   });
   if (map) map.invalidateSize();
@@ -2415,6 +2652,8 @@ window.onLanguageChange = function onLanguageChange() {
   updatePlayButton();
   const mlEl = document.getElementById("mlView");
   if (mlEl) delete mlEl.dataset.built; // el panel técnico se rehace con los nuevos textos
+  const harmEl = document.getElementById("harmView");
+  if (harmEl) delete harmEl.dataset.built;
   if (map) map.closePopup();
   recomputeAoiSelection(); // avisos, mapa, leyenda, resumen y gráfico visible
 };

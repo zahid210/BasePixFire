@@ -1082,3 +1082,171 @@ select:hover {
   color: var(--text-main);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
 }
+
+/* -------------------------------------------------------------------------
+ * Pestaña Armonización: el proceso en 5 pasos y su validación
+ * ------------------------------------------------------------------------- */
+.tab-btn.tab-key {
+  color: var(--color-teal);
+}
+
+.harm-panel {
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+
+.harm-lead {
+  font-size: 11.5px;
+  line-height: 1.5;
+  margin: 0 0 8px;
+  color: var(--text-main);
+}
+
+.harm-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.harm-step {
+  position: relative;
+  padding: 8px 8px 8px 30px;
+  background-color: var(--bg-subtle);
+  border-radius: 6px;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.harm-step b {
+  display: block;
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+
+.harm-step p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.harm-n {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background-color: var(--color-teal);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.harm-charts {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.harm-chart {
+  height: 250px;
+  min-width: 0;
+}
+
+.harm-h {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 6px 0 6px;
+}
+
+.harm-results {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.harm-results.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.harm-result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-line);
+  border-left: 4px solid var(--color-teal);
+  border-radius: 6px;
+  font-size: 10.5px;
+}
+
+.harm-result.bad {
+  border-left-color: var(--color-alert);
+}
+
+.harm-result-title {
+  color: var(--text-muted);
+}
+
+.harm-result-nums {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 16px;
+}
+
+.harm-result-nums .raw {
+  color: var(--color-alert);
+}
+
+.harm-result-nums .corr {
+  color: var(--color-teal);
+}
+
+.harm-result-nums .arrow {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.harm-result-nums .mark {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-teal);
+}
+
+.harm-result.bad .mark {
+  color: var(--color-alert);
+}
+
+.harm-result-note {
+  color: var(--text-dim);
+  font-size: 9.5px;
+}
+
+.harm-aoi {
+  font-size: 10.5px;
+  margin: 6px 0;
+  padding: 6px 8px;
+  background-color: var(--bg-subtle);
+  border-radius: 6px;
+}
+
+.harm-note {
+  line-height: 1.5;
+}
+
+@media (max-width: 1100px) {
+  .harm-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .harm-charts,
+  .harm-results,
+  .harm-results.three {
+    grid-template-columns: 1fr;
+  }
+}
