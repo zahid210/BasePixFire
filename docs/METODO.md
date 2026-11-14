@@ -97,13 +97,12 @@ Comprobación previa: con los CSV de FIRMS descargados de nuevo, el pipeline rep
 | Grilla | Cuadros con fuego | Factor anual (SNPP→Aqua) | 2012–16 → 2017–21 | 2017–21 → 2012–16 | Chiquitanía | Amazonía | Andina |
 |---|---|---|---|---|---|---|---|
 | 0,25° | 1 570 | 0,351 | +177 % → −6,7 % | +194 % → +8,1 % | −0,5 % | −11,6 % | +14,5 % |
-| 0,10° | 8 608 | 0,317 | +209 % → −5,5 % | +225 % → +6,3 % | +1,6 % | −13,0 % | +10,8 % |
-| 0,05° | 28 508 | 0,307 | +220 % → −4,6 % | +234 % → +5,1 % | +2,3 % | −13,3 % | +9,6 % |
+| 0,10° | 8 637 | 0,317 | +209 % → −5,5 % | +225 % → +6,3 % | +1,6 % | −13,0 % | +10,8 % |
+| 0,05° | 28 711 | 0,307 | +220 % → −4,6 % | +234 % → +5,1 % | +2,3 % | −13,3 % | +9,6 % |
 
-Las tres cumplen la meta fijada de antemano (±15 %). El punto más justo es Amazonía/Beni en las grillas finas (−13 %).
+Las tres cumplen la meta fijada de antemano (±15 %) y cubren el periodo completo **enero 2003 – octubre 2026**. El punto más justo es Amazonía/Beni en las grillas finas (−13 %).
 
 Limitaciones:
-- **Por ahora las grillas finas llegan hasta 2025:** faltan los CSV de 2026 (Archive Download con cuenta Earthdata) en `data/raw/2026/`. La web lo avisa y no permite elegir 2026 en esas grillas; cuando estén los archivos, basta con volver a correr el pipeline.
 - **Ruido en cuadros pequeños:** con 0,05° (~5,5 km) muchos cuadros tienen 0 o 1 día con fuego al mes; las cifras de un cuadro aislado son más inestables. Para zonas pequeñas conviene leer totales de varias celdas.
 - **El pronóstico ML solo usa 0,25°**, la grilla en la que se entrenó.
 - En el mapa, el modo "Lo habitual" ajusta los cortes de color al área del cuadro (un cuadro de 0,05° tiene 25 veces menos área que uno de 0,25°).

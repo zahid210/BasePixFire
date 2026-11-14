@@ -111,8 +111,8 @@ function setText(id, text) {
  * se cargan solo cuando el usuario las elige.
  */
 const GRID_BUNDLES = {
-  "0.10": "data/processed/grid_0.10/data_bundle.js",
-  "0.05": "data/processed/grid_0.05/data_bundle.js"
+  "0.10": "data/processed/grid_0.10/data_bundle.js?v=main4",
+  "0.05": "data/processed/grid_0.05/data_bundle.js?v=main4"
 };
 
 /** Carga un <script> (funciona también abriendo el archivo con file://). */

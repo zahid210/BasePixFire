@@ -2,7 +2,7 @@
 
 **Proyecto para el NASA International Space Apps Challenge 2026**  
 **Reto:** *Harmonization of MODIS and VIIRS Hot Spots*  
-**Licencia:** [Apache License 2.0](file:///home/kali/Desktop/BasePixFire/LICENSE) · **Referencias y Atribuciones:** [REFERENCES.md](file:///home/kali/Desktop/BasePixFire/REFERENCES.md) · **Metodología Científica:** [docs/METODO.md](file:///home/kali/Desktop/BasePixFire/docs/METODO.md)
+**Licencia:** [Apache License 2.0](LICENSE) · **Referencias y Atribuciones:** [REFERENCES.md](REFERENCES.md) · **Metodología Científica:** [docs/METODO.md](docs/METODO.md)
 
 ---
 
@@ -18,28 +18,27 @@ Si se unen ambos registros en crudo, a partir de 2012 aparece un **salto artific
 
 ## 2. Nuestra Solución y Resultados Reales (Caso de Estudio: Bolivia, 2003–2026)
 
-Construimos un **pipeline reproducible en Python** ([scripts/build_dataset.py](file:///home/kali/Desktop/BasePixFire/scripts/build_dataset.py)) y una **aplicación web interactiva sin servidor** ([index.html](file:///home/kali/Desktop/BasePixFire/index.html), [app.js](file:///home/kali/Desktop/BasePixFire/app.js)) que armonizan **24 años de datos oficiales de NASA FIRMS (enero de 2003 a octubre de 2026)** en una serie mensual consistente expresada en **celdas-día con fuego equivalentes a MODIS Aqua** sobre una grilla común de **0,25° × 0,25° (~27,5 km)**:
+Construimos un **pipeline reproducible en Python** ([scripts/build_dataset.py](scripts/build_dataset.py) y [scripts/ml_model.py](scripts/ml_model.py)) y una **aplicación web interactiva bilingüe (ES/EN) sin servidor** ([index.html](index.html), [app.js](app.js), [i18n.js](i18n.js)) que armonizan **24 años de datos oficiales de NASA FIRMS (enero de 2003 a octubre de 2026)** en una serie mensual consistente expresada en **celdas-día con fuego equivalentes a MODIS Aqua** sobre tres grillas reales seleccionables (**0,25° (~27 km)**, **0,10° (~11 km)** y **0,05° (~5,5 km)**):
 
 1. **Emparejamiento orbital a la 1:30 p. m. (Aqua + Suomi-NPP):** seleccionamos exclusivamente **MODIS Aqua** y **VIIRS Suomi-NPP**, que comparten la misma hora solar local de paso ecuatorial (~13:30 y ~01:30), eliminando el sesgo por el ciclo diurno del fuego y evitando saltos por la entrada de satélites adicionales.
 2. **Filtrado físico de calidad (H3):** aplicamos los umbrales de las guías oficiales de usuario de NASA/UMD (`type == 0` para excluir volcanes y fuentes industriales; `confidence >= 30` en MODIS y `confidence ∈ {n, h}` en VIIRS para descartar falsas alarmas nocturnas de baja confianza asociadas a la Anomalía Magnética del Atlántico Sur).
-3. **Agregación a celdas-día en grilla de 0,25° (H1):** cada celda cuenta `1` por día si registró al menos una detección activa. Esto neutraliza la sobrerrepresentación de grandes incendios en VIIRS y el doble conteo por solapamiento entre órbitas consecutivas.
+3. **Agregación a celdas-día en grilla común (H1):** cada celda cuenta `1` por día si registró al menos una detección activa. Esto neutraliza la sobrerrepresentación de grandes incendios en VIIRS y el doble conteo por solapamiento entre órbitas consecutivas.
 4. **Calibración estacional en el traslape limpio 2012–2021 y relevo por deriva orbital (H2):** calculamos los factores mensuales $k_m = \sum \text{Aqua} / \sum \text{S-NPP}$ entre febrero de 2012 y diciembre de 2021 (excluyendo y reparando el apagón del módulo FMU de Aqua de agosto–septiembre de 2020), y relevamos a Aqua a partir de enero de 2022, cuando dejó de realizar maniobras de mantenimiento orbital.
+5. **Modelado estadístico de riesgo y proyección 2027–2030:** mediante modelos lineales generalizados para datos de conteo sobredispersos (**Tweedie GLM**, **Binomial Negativa** y modelo **Hurdle** en dos etapas) evaluamos el efecto de la *persistencia anual (chaqueo)* frente a la *acumulación de combustible* y proyectamos rangos plausibles (`P10–P90`) mediante simulación Monte Carlo hasta 2030.
 
-### Validación Cruzada Fuera de Muestra (Out-of-Sample Split-Half Validation)
+### Validación Cruzada Fuera de Muestra (Out-of-Sample Split-Half Validation, Umbral $\le \pm 15\%$)
 
-| Experimento de validación | Total MODIS Aqua (celdas-día) | VIIRS S-NPP Crudo (Sesgo %) | VIIRS S-NPP Armonizado (Sesgo %) | MAE Mensual |
-|---|---|---|---|---|
-| **Entrena 2012–2016 → Prueba 2017–2021** | 59 822 | 165 737 (**+177,05 %**) | 55 795,3 (**-6,73 %**) | 109,6 |
-| **Entrena 2017–2021 → Prueba 2012–2016** | 47 776 | 140 480 (**+194,04 %**) | 51 640,1 (**+8,09 %**) | 99,4 |
-| **Subregión: Chiquitanía y Llanos (2012–2021)** | 49 984 | 144 995 (**+190,08 %**) | 49 758,5 (**-0,45 %**) | 48,2 |
-| **Subregión: Amazonía y Beni Norte (2012–2021)** | 31 155 | 76 646 (**+146,02 %**) | 27 554,2 (**-11,56 %**) | 34,5 |
-| **Subregión: Andina y Valles (2012–2021)** | 26 459 | 84 576 (**+219,65 %**) | 30 285,3 (**+14,46 %**) | 39,9 |
+| Grilla | Celdas activas | Factor anual ($k$) | Entrena 2012–16 → Prueba 2017–21 | Entrena 2017–21 → Prueba 2012–16 | Chiquitanía y Llanos | Amazonía y Beni | Andina y Valles |
+|---|---|---|---|---|---|---|---|
+| **0,25° (~27,5 km)** | 1 570 | 0,351 | `+177,1 %` → **`-6,73 %`** | `+194,0 %` → **`+8,09 %`** | **`-0,45 %`** | **`-11,56 %`** | **`+14,46 %`** |
+| **0,10° (~11,0 km)** | 8 637 | 0,317 | `+208,9 %` → **`-5,49 %`** | `+224,8 %` → **`+6,27 %`** | **`+1,64 %`** | **`-13,01 %`** | **`+10,80 %`** |
+| **0,05° (~5,5 km)** | 28 711 | 0,307 | `+219,7 %` → **`-4,55 %`** | `+233,7 %` → **`+5,05 %`** | **`+2,30 %`** | **`-13,34 %`** | **`+9,60 %`** |
 
 ---
 
 ## 3. Cómo Ejecutar la Aplicación Web
 
-Los datos ya procesados y armonizados (`data/processed/monthly_cells.csv`, `validation.csv`, `metadata.json` y `data_bundle.js`) están incluidos en el repositorio (`monthly_cells.csv` pesa **4,20 MB**), por lo que la aplicación funciona de inmediato tanto mediante un servidor local como abriendo `index.html` directamente en el navegador (`file:///`):
+Los datos ya procesados y armonizados (`data/processed/`, incluyendo `grid_0.10/`, `grid_0.05/` y `ml_bundle.js`) están incluidos en el repositorio. La grilla estándar de `0,25°` se carga al inicio y las grillas finas (`0,10°` y `0,05°`) se cargan bajo demanda (*lazy loading*), por lo que la aplicación funciona de inmediato tanto mediante un servidor local como abriendo `index.html` directamente en el navegador (`file:///`):
 
 ```bash
 # Desde la raíz del repositorio:
@@ -48,26 +47,32 @@ python3 -m http.server 8000
 
 Abre **`http://localhost:8000`** en tu navegador.
 
-### Si deseas volver a correr el pipeline desde cero con los datos crudos de NASA FIRMS:
+### Reproducibilidad completa desde los CSV crudos de NASA FIRMS:
 
 ```bash
 # 1. Descargar los 37 archivos CSV anuales públicos de Bolivia (2003-2025) a data/raw/
 python3 scripts/download_firms.py --country Bolivia --start-year 2003 --end-year 2025
 
-# 2. Procesar, ejecutar la validación cruzada y generar data/processed/
+# 2. Generar las tres grillas armonizadas (2003-2026) y sus validaciones
 python3 scripts/build_dataset.py --country Bolivia --cell-size 0.25
+python3 scripts/build_dataset.py --country Bolivia --cell-size 0.10 --out-dir data/processed/grid_0.10
+python3 scripts/build_dataset.py --country Bolivia --cell-size 0.05 --out-dir data/processed/grid_0.05
+
+# 3. Ejecutar el modelo estadístico Tweedie / Hurdle y la proyección Monte Carlo 2027-2030
+python3 scripts/ml_model.py --n-sims 200
 ```
 
 ---
 
 ## 4. Estructura del Repositorio
 
-- [index.html](file:///home/kali/Desktop/BasePixFire/index.html), [styles.css](file:///home/kali/Desktop/BasePixFire/styles.css), [app.js](file:///home/kali/Desktop/BasePixFire/app.js): Aplicación web estática (Mapa Leaflet con dibujo de AOI y selector de capas Carto/Esri, Calendario de Actividad Año × Mes en ECharts con rampas accesibles, cálculo dinámico de mediana e IQR históricos sobre el AOI, pestaña de Validación Científica y exportación CSV).
-- [scripts/download_firms.py](file:///home/kali/Desktop/BasePixFire/scripts/download_firms.py) y [scripts/build_dataset.py](file:///home/kali/Desktop/BasePixFire/scripts/build_dataset.py): Pipeline de descarga, limpieza, agregación a celdas-día, calibración y validación.
-- [data/processed/](file:///home/kali/Desktop/BasePixFire/data/processed): Salidas del pipeline (`monthly_cells.csv`, `validation.csv`, `metadata.json`).
-- [docs/METODO.md](file:///home/kali/Desktop/BasePixFire/docs/METODO.md): Explicación detallada del método, revisión crítica de sesgos y limitaciones, y guion de defensa ante el jurado.
-- [ARCHITECTURE.md](file:///home/kali/Desktop/BasePixFire/ARCHITECTURE.md) y [DATA_CONTRACT.md](file:///home/kali/Desktop/BasePixFire/DATA_CONTRACT.md): Diseño de arquitectura y contrato de datos v3.
-- [REFERENCES.md](file:///home/kali/Desktop/BasePixFire/REFERENCES.md) y [LICENSE](file:///home/kali/Desktop/BasePixFire/LICENSE): Citación completa de fuentes de NASA/NOAA, artículos científicos y licencias de código abierto exigidas por las bases de NASA Space Apps 2026.
+- [index.html](index.html), [styles.css](styles.css), [app.js](app.js), [i18n.js](i18n.js): Aplicación web estática bilingüe (ES/EN) con mapa interactivo Leaflet (polígono libre, rectángulo, coordenadas, clic por celda con *sparkline*, animación temporal y 3 resoluciones de grilla), y 6 vistas integradas: *Calendario*, *Armonización en 5 pasos*, *Evolución*, *¿Es normal?*, *Peores años* y *Pronóstico (técnico)*, además de exportación de CSV (serie y celdas) y PNG.
+- [scripts/download_firms.py](scripts/download_firms.py) y [scripts/build_dataset.py](scripts/build_dataset.py): Pipeline de descarga, limpieza física (H3), agregación a celdas-día (H1), calibración estacional (H2) y validación cruzada fuera de muestra.
+- [scripts/ml_model.py](scripts/ml_model.py): Modelado GLM Tweedie, Binomial Negativa, Hurdle (ocurrencia vs. intensidad) y simulación Monte Carlo 2027–2030.
+- [data/processed/](data/processed): Salidas del pipeline para `0,25°`, `grid_0.10/`, `grid_0.05/` y resultados del modelo ML (`ml_results.json`, `ml_bundle.js`).
+- [docs/METODO.md](docs/METODO.md): Especificación científica del método de armonización, evaluación crítica de sesgos y limitaciones, validación multirresolución, documentación del modelo ML y guion de defensa ante el jurado.
+- [ARCHITECTURE.md](ARCHITECTURE.md) y [DATA_CONTRACT.md](DATA_CONTRACT.md): Arquitectura y contrato de datos v3.
+- [REFERENCES.md](REFERENCES.md) y [LICENSE](LICENSE): Citación completa de fuentes de NASA/NOAA, artículos científicos y licencias de código abierto exigidas por las bases de NASA Space Apps 2026.
 
 ---
 
