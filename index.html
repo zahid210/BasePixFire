@@ -3,9 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PixFire Bolivia — Atlas Espacio-Temporal MODIS &amp; VIIRS (2003–2026)</title>
+  <title>PixFire Bolivia — Fuego visto por satélite (2003–2026)</title>
 
-  <!-- Tipografía geométrica y editorial: Sora -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -14,11 +13,9 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
 
-  <!-- Estilos: Split Cartográfico 50/50, Modo Claro, Minimalismo Arquitectónico Plano -->
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Iconos vectoriales limpios -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <defs>
       <symbol id="ic-download" viewBox="0 0 24 24">
@@ -38,257 +35,215 @@
   </svg>
 
   <div class="atlas-screen">
-    <!-- 1. FRANJA SUPERIOR: IDENTIDAD Y CONTROLES GLOBALES (Plana, 44px) -->
+    <!-- 1. BARRA SUPERIOR: tres preguntas (dónde, cuándo, qué años) y descargas -->
     <header class="atlas-topbar">
       <div class="brand-unit">
         <span class="brand-mark"></span>
         <div class="brand-text">
-          <span class="brand-name">PIXFIRE BOLIVIA</span>
-          <span class="brand-desc">ARMONIZACIÓN MODIS &amp; VIIRS · 2003–2026</span>
+          <span class="brand-name">PixFire Bolivia</span>
+          <span class="brand-desc">Fuego visto por satélite · 2003–2026</span>
         </div>
       </div>
 
       <div class="toolbar-unit">
         <div class="tool-cell">
-          <label for="presetRegion">ÁREA (AOI)</label>
+          <label for="presetRegion">Zona</label>
           <select id="presetRegion">
             <option value="all" selected>Toda Bolivia</option>
             <option value="chiquitania">Chiquitanía y Llanos</option>
             <option value="amazonia">Amazonía y Beni</option>
             <option value="andina">Andina y Valles</option>
-            <option value="custom" disabled>Polígono en mapa</option>
+            <option value="custom" disabled>Zona elegida en el mapa</option>
           </select>
         </div>
 
         <div class="tool-cell">
-          <label for="focusMonth">MES EVALUADO</label>
+          <label for="focusMonth">Mes</label>
           <div class="inline-fields">
-            <select id="focusMonth" aria-label="Mes evaluado">
-              <option value="1">Ene</option>
-              <option value="2">Feb</option>
-              <option value="3">Mar</option>
-              <option value="4">Abr</option>
-              <option value="5">May</option>
-              <option value="6">Jun</option>
-              <option value="7">Jul</option>
-              <option value="8">Ago</option>
-              <option value="9">Sep</option>
-              <option value="10" selected>Oct</option>
-              <option value="11">Nov</option>
-              <option value="12">Dic</option>
+            <select id="focusMonth" aria-label="Mes">
+              <option value="1">Enero</option>
+              <option value="2">Febrero</option>
+              <option value="3">Marzo</option>
+              <option value="4">Abril</option>
+              <option value="5">Mayo</option>
+              <option value="6">Junio</option>
+              <option value="7">Julio</option>
+              <option value="8">Agosto</option>
+              <option value="9">Septiembre</option>
+              <option value="10" selected>Octubre</option>
+              <option value="11">Noviembre</option>
+              <option value="12">Diciembre</option>
             </select>
-            <select id="focusYear" aria-label="Año evaluado"></select>
+            <select id="focusYear" aria-label="Año"></select>
           </div>
         </div>
 
         <div class="tool-cell">
-          <label for="yearStart">RANGO AÑOS</label>
+          <label for="yearStart">Años a mostrar</label>
           <div class="inline-fields">
-            <select id="yearStart" aria-label="Año inicio"></select>
-            <span class="sep">—</span>
-            <select id="yearEnd" aria-label="Año fin"></select>
+            <select id="yearStart" aria-label="Desde el año"></select>
+            <span class="sep">a</span>
+            <select id="yearEnd" aria-label="Hasta el año"></select>
           </div>
-        </div>
-
-        <div class="tool-cell">
-          <label for="colorRamp">PALETA</label>
-          <select id="colorRamp" aria-label="Escala de color">
-            <option value="fire" selected>Fuego (Ámbar a Carmesí)</option>
-            <option value="viridis">Viridis</option>
-            <option value="plasma">Plasma</option>
-          </select>
         </div>
 
         <div class="tool-actions">
-          <button type="button" id="btnDownloadSeries" class="btn-action primary" title="Serie mensual agregada del área (con mediana, P25, P75 y anomalía)">
-            <svg class="i"><use href="#ic-download" /></svg>
-            <span>CSV serie</span>
-          </button>
-          <button type="button" id="btnDownloadCells" class="btn-action" title="Detalle por celda y mes del área seleccionada">
-            <svg class="i"><use href="#ic-download" /></svg>
-            <span>CSV celdas</span>
-          </button>
-          <button type="button" id="btnResetAoi" class="btn-action icon" title="Restablecer filtros a toda Bolivia" aria-label="Restablecer filtros">
+          <details class="menu" id="downloadMenu">
+            <summary class="btn-action primary">
+              <svg class="i"><use href="#ic-download" /></svg>
+              <span>Descargar</span>
+            </summary>
+            <div class="menu-list">
+              <button type="button" id="btnDownloadSeries">
+                <b>Datos de la zona</b>
+                <span>Un valor por mes · archivo CSV (Excel)</span>
+              </button>
+              <button type="button" id="btnDownloadCells">
+                <b>Datos por cuadro del mapa</b>
+                <span>Detalle de cada cuadro y mes · archivo CSV</span>
+              </button>
+              <button type="button" id="btnPng">
+                <b>Imagen del gráfico</b>
+                <span>El gráfico que estás viendo · PNG</span>
+              </button>
+            </div>
+          </details>
+          <button type="button" id="btnResetAoi" class="btn-action icon" title="Volver a toda Bolivia" aria-label="Volver a toda Bolivia">
             <svg class="i"><use href="#ic-reset" /></svg>
           </button>
         </div>
       </div>
     </header>
 
-    <!-- Franja de advertencia -->
     <div id="aoiWarning" class="warning-strip hidden" role="status" aria-live="polite">
       <svg class="i"><use href="#ic-alert" /></svg>
       <span id="aoiWarningText"></span>
     </div>
 
-    <!-- 2. SPLIT CARTOGRÁFICO 50 / 50: ESPACIO A LA IZQUIERDA · TIEMPO A LA DERECHA -->
     <main class="atlas-split">
-      <!-- MITAD IZQUIERDA: EL ESPACIO (Mapa del territorio de Bolivia, grilla y polígonos) -->
-      <section class="split-pane pane-space" aria-label="Mapa territorial de Bolivia y selección espacial">
-        <div class="pane-header-compact">
-          <div class="pane-title-group">
-            <span class="eyebrow-tag">ESPACIO · DÓNDE</span>
-            <h2>Territorio y Grilla de 0,25° (~27,5 km)</h2>
-          </div>
-          <span class="status-chip" id="aoiStatsBadge">Cargando grilla...</span>
-        </div>
-
-        <!-- Barra del mapa: qué se pinta y animación mes a mes -->
+      <!-- 2. IZQUIERDA: EL MAPA (dónde hay fuego) -->
+      <section class="split-pane pane-space" aria-label="Mapa de Bolivia">
         <div class="map-toolbar">
-          <span class="map-toolbar-label">COLOREAR POR</span>
+          <span class="map-toolbar-label">El mapa muestra</span>
           <div class="seg-control" role="group" aria-label="Qué muestra el mapa">
-            <button type="button" class="map-mode-btn active" data-mode="period" aria-pressed="true">Promedio del rango</button>
-            <button type="button" class="map-mode-btn" data-mode="month" aria-pressed="false">Mes evaluado</button>
+            <button type="button" class="map-mode-btn active" data-mode="period" aria-pressed="true" title="Promedio de los años elegidos">Lo habitual</button>
+            <button type="button" class="map-mode-btn" data-mode="month" aria-pressed="false" title="Solo el mes elegido arriba">El mes elegido</button>
+            <button type="button" class="map-mode-btn" data-mode="ml" aria-pressed="false" title="Lo que un modelo estadístico espera para 2026">Pronóstico 2026</button>
           </div>
-          <button type="button" id="btnPlay" class="btn-action play-btn" aria-label="Animar mes a mes">▶ Animar</button>
+          <button type="button" id="btnPlay" class="btn-action play-btn" title="Recorre los meses uno por uno" aria-label="Animar mes a mes">▶ Animar</button>
         </div>
 
-        <!-- Visor del Mapa Leaflet en modo claro -->
         <div class="map-container">
           <div id="map" class="map-canvas"></div>
         </div>
 
         <div class="pane-footer-note">
-          <form id="coordForm" class="coord-form" aria-label="Área por coordenadas">
-            <span class="map-toolbar-label">ÁREA POR COORDENADAS</span>
-            <label>Lat <input type="number" id="latMin" step="0.25" min="-90" max="90" placeholder="mín" value="-18.5" /></label>
-            <input type="number" id="latMax" step="0.25" min="-90" max="90" placeholder="máx" value="-16" aria-label="Latitud máxima" />
-            <label>Lon <input type="number" id="lonMin" step="0.25" min="-180" max="180" placeholder="mín" value="-63" /></label>
-            <input type="number" id="lonMax" step="0.25" min="-180" max="180" placeholder="máx" value="-60" aria-label="Longitud máxima" />
-            <button type="submit" class="btn-action">Aplicar</button>
-          </form>
-          <span>También puedes usar un preset arriba, dibujar con el lápiz del mapa o hacer clic en una celda para ver su historia.</span>
+          <span>Haz clic en un cuadro para ver su historia, o dibuja tu propia zona con las herramientas del mapa (arriba a la derecha).</span>
+          <details id="coordDetails" class="more-options">
+            <summary>Elegir la zona con coordenadas</summary>
+            <form id="coordForm" class="coord-form" aria-label="Zona por coordenadas">
+              <label>Latitud de <input type="number" id="latMin" step="0.25" min="-90" max="90" value="-18.5" /></label>
+              <label>a <input type="number" id="latMax" step="0.25" min="-90" max="90" value="-16" aria-label="Latitud máxima" /></label>
+              <label>Longitud de <input type="number" id="lonMin" step="0.25" min="-180" max="180" value="-63" /></label>
+              <label>a <input type="number" id="lonMax" step="0.25" min="-180" max="180" value="-60" aria-label="Longitud máxima" /></label>
+              <button type="submit" class="btn-action">Aplicar</button>
+            </form>
+          </details>
         </div>
       </section>
 
-      <!-- MITAD DERECHA: EL TIEMPO Y LA CIENCIA (Diagnóstico + Calendario Heatmap + Validación) -->
-      <section class="split-pane pane-time" aria-label="Serie temporal, diagnóstico climatológico y validación científica">
-        <!-- BLOQUE SUPERIOR DERECHO: DIAGNÓSTICO CLIMATOLÓGICO (Caso de uso principal de la NASA) -->
-        <article class="time-subblock block-diagnostic">
-          <div class="subblock-header">
-            <div>
-              <span class="eyebrow-tag">TIEMPO · CUÁNDO · CASO DE USO NASA</span>
-              <h3 id="diagPeriodTitle">Octubre 2026</h3>
-            </div>
-            <strong class="anomaly-pill" id="kpiAnomalyVal">—</strong>
+      <!-- 3. DERECHA: LA RESPUESTA (¿es normal?) Y LOS GRÁFICOS -->
+      <section class="split-pane pane-time" aria-label="Resumen y gráficos">
+        <article class="time-subblock summary">
+          <div class="summary-top">
+            <h2 id="sumTitle">Octubre 2026 · Toda Bolivia</h2>
+            <strong id="sumStatus" class="status-pill">—</strong>
           </div>
 
-          <div class="diagnostic-row">
-            <div class="huge-number-cell">
-              <span class="huge-val" id="kpiCurrentVal">—</span>
-              <span class="huge-unit">celdas-día con fuego</span>
+          <div class="summary-main">
+            <div class="big">
+              <span class="big-val" id="sumValue">—</span>
+              <span class="big-unit">
+                días con fuego
+                <button type="button" id="btnInfoUnit" class="info-btn" aria-expanded="false" aria-controls="infoUnit" title="¿Qué significa?">?</button>
+              </span>
             </div>
 
-            <!-- Semáforo visual del rango climatológico -->
-            <div class="climatology-indicator">
+            <div class="gauge" aria-hidden="true">
               <div class="indicator-track">
-                <div class="track-normal-zone" title="Rango normal intercuartílico (P25 - P75)"></div>
-                <div class="track-current-marker" title="Valor del mes evaluado"></div>
+                <div class="track-normal-zone"></div>
+                <div class="track-current-marker"></div>
               </div>
               <div class="track-labels">
-                <span>P25 normal</span>
-                <span>Mediana histórica: <b id="kpiMedianVal">—</b></span>
-                <span>P75 normal</span>
+                <span>Menos fuego</span>
+                <span>Lo normal: <b id="sumRange">—</b></span>
+                <span>Más fuego</span>
               </div>
             </div>
           </div>
 
-          <div class="diagnostic-stats">
-            <div class="stat-item">
-              <span class="stat-label">Banda Normal (P25–P75)</span>
-              <strong id="kpiIqrVal">—</strong>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Promedio Histórico</span>
-              <strong id="kpiMeanVal">—</strong>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Sensor Activo</span>
-              <strong id="kpiCurrentSource">Fuente: VIIRS S-NPP armonizado</strong>
-            </div>
-          </div>
-          <span id="kpiAnomalyText" class="sr-only"></span>
+          <p id="sumSentence" class="summary-sentence"></p>
+
+          <p id="infoUnit" class="info-pop hidden">
+            <b>¿Qué es un “día con fuego”?</b> Dividimos Bolivia en cuadros de unos 27 km de lado. Cada cuadro suma 1 por cada día en que
+            el satélite vio fuego en él, y aquí se suman todos los cuadros de la zona. Mide cuánto y por cuánto tiempo hubo fuego:
+            <b>no es el número de incendios ni la superficie quemada</b>. “Lo normal” es el rango en que cayó la mitad central de
+            los años 2003–2025 para ese mismo mes.
+          </p>
+
+          <button type="button" id="btnTrust" class="trust-link">
+            <svg class="i"><use href="#ic-check" /></svg>
+            <span>Datos de dos satélites de la NASA, corregidos para que se puedan comparar · <u>ver cómo</u></span>
+          </button>
         </article>
 
-        <!-- BLOQUE CENTRAL DERECHO: EL CALENDARIO DE QUEMA (Matriz Año x Mes) -->
         <article class="time-subblock block-calendar">
-          <div class="subblock-header">
-            <div>
-              <span class="eyebrow-tag" id="stageEyebrow">SERIE HISTÓRICA CONTINUA · CLIC EN UNA CELDA PARA EVALUAR ESE MES</span>
-              <h3 id="stageTitle">Calendario de Actividad de Quema (Año × Mes)</h3>
-            </div>
-            <!-- Pestañas de vistas temporales + exportar imagen -->
-            <div class="view-actions">
-            <div class="tab-bar" role="tablist" aria-label="Vistas temporales">
-              <button type="button" role="tab" class="tab-btn active" data-view="calendar" aria-selected="true">Calendario</button>
-              <button type="button" role="tab" class="tab-btn" data-view="series" aria-selected="false">Serie temporal</button>
-              <button type="button" role="tab" class="tab-btn" data-view="seasonal" aria-selected="false">Ciclo estacional</button>
-              <button type="button" role="tab" class="tab-btn" data-view="ranking" aria-selected="false">Ranking</button>
-            </div>
-            <button type="button" id="btnPng" class="btn-action png-btn" title="Descargar el gráfico visible como imagen PNG">
-              <svg class="i"><use href="#ic-download" /></svg>
-              <span>PNG</span>
-            </button>
+          <div class="tab-bar" role="tablist" aria-label="Gráficos">
+            <button type="button" role="tab" class="tab-btn active" data-view="calendar" aria-selected="true">Calendario</button>
+            <button type="button" role="tab" class="tab-btn" data-view="series" aria-selected="false">Evolución</button>
+            <button type="button" role="tab" class="tab-btn" data-view="seasonal" aria-selected="false">¿Es normal?</button>
+            <button type="button" role="tab" class="tab-btn" data-view="ranking" aria-selected="false">Peores años</button>
+            <button type="button" role="tab" class="tab-btn" data-view="ml" aria-selected="false">Pronóstico (técnico)</button>
+          </div>
+
+          <div class="view-head">
+            <h3 id="stageTitle">Calendario de fuego</h3>
+            <p id="stageHelp" class="view-help"></p>
+            <div id="compareBar" class="compare-bar hidden">
+              <label class="check">
+                <input type="checkbox" id="chkCompare" />
+                <span>Mostrar la corrección entre satélites</span>
+              </label>
+              <p id="trustNote" class="trust-note hidden"></p>
+              <ul id="seriesLegend" class="series-legend hidden" aria-label="Líneas del gráfico">
+                <li><i style="background:#0f172a"></i>Dato final (corregido)</li>
+                <li><i style="background:#0284c7"></i>Satélite antiguo (MODIS)</li>
+                <li><i style="background:#dc2626"></i>Satélite nuevo sin corregir (VIIRS)</li>
+                <li><i class="dashed" style="color:#0f766e"></i>Satélite nuevo corregido</li>
+              </ul>
             </div>
           </div>
 
           <div class="calendar-chart-wrap">
-            <div id="chartCalendar" class="chart-canvas view-panel" data-view="calendar" role="img" aria-label="Matriz de calor de quema Año por Mes"></div>
-            <div id="chartSeries" class="chart-canvas view-panel hidden" data-view="series" role="img" aria-label="Serie mensual: MODIS Aqua, VIIRS S-NPP crudo y armonizado"></div>
-            <div id="chartSeasonal" class="chart-canvas view-panel hidden" data-view="seasonal" role="img" aria-label="Ciclo estacional del año evaluado frente a la mediana histórica"></div>
+            <div id="chartCalendar" class="chart-canvas view-panel" data-view="calendar" role="img" aria-label="Calendario de fuego por año y mes"></div>
+            <div id="chartSeries" class="chart-canvas view-panel hidden" data-view="series" role="img" aria-label="Evolución mensual de los días con fuego"></div>
+            <div id="chartSeasonal" class="chart-canvas view-panel hidden" data-view="seasonal" role="img" aria-label="Meses del año elegido frente a lo normal"></div>
             <div id="rankingView" class="chart-canvas view-panel ranking-panel hidden" data-view="ranking"></div>
+            <div id="mlView" class="chart-canvas view-panel ml-panel hidden" data-view="ml"></div>
             <span id="calendarSummarySR" class="sr-only"></span>
           </div>
-        </article>
-
-        <!-- BLOQUE INFERIOR DERECHO: VALIDACIÓN CIENTÍFICA (Eliminación del salto) -->
-        <article class="time-subblock block-validation">
-          <div class="subblock-header">
-            <div>
-              <span class="eyebrow-tag" id="valScopeEyebrow">EVALUACIÓN CIENTÍFICA · PRUEBA FUERA DE MUESTRA (2017–2021)</span>
-              <h3>Neutralización del Salto MODIS (1 km) vs. VIIRS (375 m)</h3>
-            </div>
-            <div class="validation-badge-clean">
-              <svg class="i text-teal"><use href="#ic-check" /></svg>
-              <span>Salto eliminado</span>
-            </div>
-          </div>
-
-          <div class="validation-strip-grid">
-            <div class="val-metric">
-              <span class="val-lbl">Salto crudo instrumental:</span>
-              <strong class="val-num red" id="valSplit1RawNum">+177,1 %</strong>
-            </div>
-            <div class="val-arrow">→</div>
-            <div class="val-metric">
-              <span class="val-lbl">Sesgo residual armonizado:</span>
-              <strong class="val-num teal" id="valSplit1Bias">-6,73 %</strong>
-            </div>
-            <div class="val-metric">
-              <span class="val-lbl">Aqua real vs. S-NPP arm.:</span>
-              <span class="val-detail"><b id="valSplit1Aqua">59 822</b> vs <b id="valSplit1Harm">55 795,3</b></span>
-            </div>
-            <div class="val-metric">
-              <span class="val-lbl">Factor <var>k</var><sub>m</sub> del mes:</span>
-              <strong class="val-detail" id="msFactorVal">—</strong>
-            </div>
-          </div>
-          <span id="valSplit1Raw" class="sr-only">Salto bruto eliminado: +177,1 % → -6,7 %</span>
         </article>
       </section>
     </main>
 
-    <!-- 3. PIE DE PÁGINA EDITORIAL (24px) -->
     <footer class="atlas-footer">
-      <div class="footer-segment">
-        <strong>PixFire Bolivia</strong> · Código abierto bajo licencia <a href="LICENSE" target="_blank" rel="noopener">Apache 2.0</a> ·
+      <span>
+        Datos: <a href="https://www.earthdata.nasa.gov/data/tools/firms" target="_blank" rel="noopener">NASA FIRMS</a> ·
+        <a href="docs/METODO.md" target="_blank" rel="noopener">Método</a> ·
         <a href="REFERENCES.md" target="_blank" rel="noopener">Referencias</a> ·
-        <a href="docs/METODO.md" target="_blank" rel="noopener">Metodología Científica</a>
-      </div>
-      <div class="footer-segment right">
-        Datos satelitales: <em>NASA FIRMS ESDIS (<a href="https://www.earthdata.nasa.gov/data/tools/firms" target="_blank" rel="noopener">earthdata.nasa.gov/firms</a>)</em>.
-        Proyecto desarrollado para el NASA Space Apps Challenge 2026; sin patrocinio oficial de NASA.
-      </div>
+        <a href="LICENSE" target="_blank" rel="noopener">Licencia Apache 2.0</a>
+      </span>
+      <span>NASA Space Apps Challenge 2026 · sin patrocinio oficial de NASA · 2026 es provisional (enero–octubre)</span>
     </footer>
   </div>
 
@@ -300,6 +255,8 @@
 
   <!-- Fallback de datos autónomo (compatible con file:// y http://) -->
   <script src="data/processed/data_bundle.js"></script>
+  <!-- Resultados del modelo de Machine Learning (scripts/ml_model.py) -->
+  <script src="data/processed/ml_bundle.js"></script>
 
   <!-- Lógica y renderizado cliente -->
   <script src="app.js"></script>

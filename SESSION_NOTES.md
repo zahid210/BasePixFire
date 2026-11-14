@@ -54,3 +54,17 @@ Solo se tocaron `index.html`, `app.js` y `styles.css`. No cambian los datos, el 
 Notas:
 - El ranking de años marca 2026 con `*` porque solo cubre enero–octubre.
 - Probado con capturas headless de Edge a 1500×900 y 1366×768. Falta una prueba manual de clics reales (dibujar polígono, popup y descargas) en Chrome/Firefox.
+
+## 4. Rediseño en lenguaje simple (rama `ivan`, 14/11/2026)
+
+Objetivo: que cualquier persona entienda la pantalla sin conocer el método. Solo cambian `index.html`, `app.js` y `styles.css`; los datos y los cálculos son los mismos.
+
+- **Unidad en pantalla: "días con fuego"** = celdas-día. El botón **?** junto al número lo explica y aclara que no es número de incendios ni superficie quemada.
+- **Resumen en una frase** arriba a la derecha: valor del mes, etiqueta (*Más alto de lo normal / Dentro de lo normal / Más bajo de lo normal*, según el rango P25–P75 de 2003–2025) y comparación con "un mes típico" (mediana).
+- **Pestañas renombradas:** Calendario · Evolución (antes Serie temporal) · ¿Es normal? (antes Ciclo estacional) · Peores años (antes Ranking) · Pronóstico (técnico) (antes Modelo ML). Cada una tiene una línea de "cómo leerlo".
+- **Evolución** muestra una sola línea. La casilla "Mostrar la corrección entre satélites" (o el enlace "ver cómo" del resumen) agrega las líneas de cada satélite y una explicación con las cifras de validación.
+- **Mapa:** modos "Lo habitual / El mes elegido / Pronóstico 2026", leyenda con palabras y una sola escala de color. Las coordenadas están en el desplegable "Elegir la zona con coordenadas".
+- **Un solo botón "Descargar"** con tres opciones (datos de la zona, datos por cuadro, imagen del gráfico).
+- **Se quitó:** selector de paleta, franja fija de validación, factor k del mes, "sensor activo", contador de celdas y km², etiquetas en mayúsculas.
+
+Pendiente: el contenido de la pestaña "Pronóstico (técnico)" sigue en lenguaje técnico (odds, deviance, AUC). La clave de CARTO en `app.js` sí es necesaria: sin ella el mapa base sale con la marca "API KEY REQUIRED".
