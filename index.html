@@ -61,7 +61,8 @@
           </select>
         </div>
 
-        <div class="tool-cell">
+        <!-- data-map-modes: la celda solo se ve con esos modos del mapa (ver updateToolbarForMapMode en app.js) -->
+        <div class="tool-cell hidden" id="cellMonth" data-map-modes="month">
           <label for="focusMonth" data-i18n="top.month">Mes</label>
           <div class="inline-fields">
             <!-- Los nombres de los meses los escribe app.js según el idioma -->
@@ -83,13 +84,18 @@
           </div>
         </div>
 
-        <div class="tool-cell">
+        <div class="tool-cell" id="cellYears" data-map-modes="period">
           <label for="yearStart" data-i18n="top.years">Años a mostrar</label>
           <div class="inline-fields">
             <select id="yearStart" aria-label="Desde el año" data-i18n-aria="top.fromYear"></select>
             <span class="sep" data-i18n="top.to">a</span>
             <select id="yearEnd" aria-label="Hasta el año" data-i18n-aria="top.toYear"></select>
           </div>
+        </div>
+
+        <div class="tool-cell hidden" id="cellMlYear" data-map-modes="ml">
+          <label for="mlYearTop" data-i18n="top.mlYear">Año proyectado</label>
+          <select id="mlYearTop"></select>
         </div>
 
         <div class="tool-cell">

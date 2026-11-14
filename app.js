@@ -652,7 +652,27 @@ function setMapMode(mode) {
     b.setAttribute("aria-pressed", active ? "true" : "false");
   });
   if (mode === "period") stopAnimation();
+  updateToolbarForMapMode();
   renderMapGrid();
+}
+
+/** Muestra en la barra superior solo el selector que usa el modo del mapa (años, mes o año proyectado). */
+function updateToolbarForMapMode() {
+  document.querySelectorAll("[data-map-modes]").forEach((el) => {
+    const modes = el.dataset.mapModes.split(" ");
+    const hideMl = el.id === "cellMlYear" && !getMl();
+    el.classList.toggle("hidden", hideMl || !modes.includes(state.mapMode));
+  });
+}
+
+/** Cambia el año proyectado del mapa y sincroniza los dos selectores (barra superior y pestaña técnica). */
+function setMlYear(year) {
+  state.mlYear = year;
+  ["mlYearTop", "mlYearSelect"].forEach((id) => {
+    const sel = document.getElementById(id);
+    if (sel) sel.value = String(year);
+  });
+  if (state.mapMode === "ml") renderMapGrid();
 }
 
 function nextMonth(year, month) {
@@ -1557,6 +1577,13 @@ function initMlControls() {
     return;
   }
   if (!ml.projection_years.includes(state.mlYear)) state.mlYear = ml.projection_years[ml.projection_years.length - 1];
+  // Selector "Año proyectado" de la barra superior (visible solo con el mapa en modo pronóstico)
+  const top = document.getElementById("mlYearTop");
+  if (top) {
+    top.innerHTML = ml.projection_years
+      .map((y) => `<option value="${y}"${y === state.mlYear ? " selected" : ""}>${y}</option>`).join("");
+    top.addEventListener("change", (e) => setMlYear(parseInt(e.target.value, 10)));
+  }
 }
 
 function mlTerm(part, term) {
@@ -1929,10 +1956,7 @@ function renderMlPanel() {
     chartMlPower = null;
     chartMlProjection = null;
 
-    el.querySelector("#mlYearSelect").addEventListener("change", (e) => {
-      state.mlYear = parseInt(e.target.value, 10);
-      if (state.mapMode === "ml") renderMapGrid();
-    });
+    el.querySelector("#mlYearSelect").addEventListener("change", (e) => setMlYear(parseInt(e.target.value, 10)));
     el.querySelector("#btnMlMap").addEventListener("click", () => setMapMode("ml"));
   }
   renderMlProjectionChart(ml);
@@ -2668,6 +2692,7 @@ window.onLanguageChange = function onLanguageChange() {
     initMap();
     bindEvents();
     initMlControls();
+    updateToolbarForMapMode();
     await loadAllData();
     recomputeAoiSelection();
   } catch (err) {
