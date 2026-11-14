@@ -39,6 +39,10 @@ const state = {
   activeView: "calendar", // calendar | series | seasonal | ranking | ml
   mapMode: "period", // period (promedio del rango) | month (mes evaluado) | ml (proyección ML)
   mlYear: 2030, // año de la proyección ML que se pinta en el mapa
+  gridRes: "0.25", // tamaño de celda en grados: "0.25" | "0.10" | "0.05"
+  baseMeta: null,
+  baseCells025: null,
+  gridCache: new Map(),
   animTimer: null,
   currentSeriesByYm: new Map(),
   subregionTotals: {
@@ -102,26 +106,47 @@ function setText(id, text) {
 /* =========================================================================
  * 1. Carga y parseo de datos estáticos (Universal: HTTP o local file://)
  * ========================================================================= */
-async function loadAllData() {
-  if (window.PIXFIRE_DATA && window.PIXFIRE_DATA.meta && window.PIXFIRE_DATA.cellsCsv) {
-    state.meta = window.PIXFIRE_DATA.meta;
-    parseCellsCsv(window.PIXFIRE_DATA.cellsCsv, state.meta.cell_size_deg);
-    parseValidationCsv(window.PIXFIRE_DATA.valCsv);
-    return;
+async function loadAllData(resKey) {
+  if (resKey) state.gridRes = resKey;
+  const r = state.gridRes || "0.25";
+  const cs = parseFloat(r);
+
+  if (!state.baseCells025) {
+    let rawMeta = null;
+    let cellsText = null;
+    let valText = null;
+
+    if (window.PIXFIRE_DATA && window.PIXFIRE_DATA.meta && window.PIXFIRE_DATA.cellsCsv) {
+      rawMeta = window.PIXFIRE_DATA.meta;
+      cellsText = window.PIXFIRE_DATA.cellsCsv;
+      valText = window.PIXFIRE_DATA.valCsv;
+    } else {
+      const [metaResp, cellsResp, valResp] = await Promise.all([
+        fetch("data/processed/metadata.json"),
+        fetch("data/processed/monthly_cells.csv"),
+        fetch("data/processed/validation.csv")
+      ]);
+      rawMeta = await metaResp.json();
+      cellsText = await cellsResp.text();
+      valText = await valResp.text();
+    }
+
+    state.baseMeta = rawMeta;
+    state.baseCells025 = parseBaseCells025(cellsText);
+    parseValidationCsv(valText);
   }
 
-  const [metaResp, cellsResp, valResp] = await Promise.all([
-    fetch("data/processed/metadata.json"),
-    fetch("data/processed/monthly_cells.csv"),
-    fetch("data/processed/validation.csv")
-  ]);
+  state.meta = {
+    ...state.baseMeta,
+    cell_size_deg: cs
+  };
 
-  state.meta = await metaResp.json();
-  const cellsText = await cellsResp.text();
-  const valText = await valResp.text();
-
-  parseCellsCsv(cellsText, state.meta.cell_size_deg);
-  parseValidationCsv(valText);
+  if (!state.gridCache.has(r)) {
+    state.gridCache.set(r, buildContinuousGrid(cs));
+  }
+  const cached = state.gridCache.get(r);
+  state.cellsMeta = cached.cellsMeta;
+  state.subregionTotals = cached.subregionTotals;
 }
 
 function classifySubregion(lat, lon) {
@@ -130,7 +155,9 @@ function classifySubregion(lat, lon) {
   return "chiquitania_llanos";
 }
 
-function parseCellsCsv(csvText, cellSize) {
+function parseBaseCells025(csvText) {
+  const baseMap = new Map();
+  const cellSize = 0.25;
   const lines = csvText.trim().split("\n");
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
@@ -142,7 +169,7 @@ function parseCellsCsv(csvText, cellSize) {
     const aqua = aStr === "" ? null : parseInt(aStr, 10);
     const snpp = sStr === "" ? null : parseInt(sStr, 10);
 
-    let cellObj = state.cellsMeta.get(cellId);
+    let cellObj = baseMap.get(cellId);
     if (!cellObj) {
       const [rStr, cStr] = cellId.split("_");
       const row = parseInt(rStr, 10);
@@ -150,17 +177,168 @@ function parseCellsCsv(csvText, cellSize) {
       const lat = (row + 0.5) * cellSize - 90.0;
       const lon = (col + 0.5) * cellSize - 180.0;
       const subregion = classifySubregion(lat, lon);
-      cellObj = { cellId, row, col, lat, lon, subregion, totalHarm: 0, records: [], byYm: new Map() };
-      state.cellsMeta.set(cellId, cellObj);
+      cellObj = {
+        cellId,
+        parentCellId: cellId,
+        row,
+        col,
+        lat,
+        lon,
+        subregion,
+        totalHarm: 0,
+        records: [],
+        byYm: new Map(),
+        densityFactor: 1.0,
+        areaWeight: 1.0
+      };
+      baseMap.set(cellId, cellObj);
     }
 
     const rec = { cellId, year, month, harm, aqua, snpp, source };
     cellObj.totalHarm += harm;
     cellObj.records.push(rec);
     cellObj.byYm.set(ymKey(year, month), harm);
-    state.allRecords.push(rec);
-    state.subregionTotals[cellObj.subregion] = (state.subregionTotals[cellObj.subregion] || 0) + harm;
   }
+  return baseMap;
+}
+
+/**
+ * Construye una grilla 100% continua sin bloques separados ni filas/columnas vacías
+ * para la resolución seleccionada (`0.25°`, `0.10°`, `0.05°`), aplicando interpolación
+ * espacial IDW entre celdas vecinas de 0.25° para transiciones suaves.
+ */
+function buildContinuousGrid(cs) {
+  const baseMap = state.baseCells025;
+  const subregionTotals = {
+    chiquitania_llanos: 0,
+    amazonia_beni_norte: 0,
+    andina_valles: 0
+  };
+  baseMap.forEach((b) => {
+    subregionTotals[b.subregion] = (subregionTotals[b.subregion] || 0) + b.totalHarm;
+  });
+
+  if (Math.abs(cs - 0.25) < 1e-6) {
+    return { cellsMeta: baseMap, subregionTotals };
+  }
+
+  // Índice espacial rápido por (row_025, col_025)
+  const rcIndex = new Map();
+  baseMap.forEach((b) => {
+    rcIndex.set(`${b.row}_${b.col}`, b);
+  });
+
+  const subCells = new Map();
+  const baseHalf = 0.125;
+
+  // 1. Generar todas las subceldas que intersectan cada celda de 0.25° activa
+  baseMap.forEach((b) => {
+    const latMin = b.lat - baseHalf;
+    const latMax = b.lat + baseHalf;
+    const lonMin = b.lon - baseHalf;
+    const lonMax = b.lon + baseHalf;
+
+    const rMin = Math.floor((latMin + 90.0 + 1e-9) / cs);
+    const rMax = Math.floor((latMax + 90.0 - 1e-9) / cs);
+    const cMin = Math.floor((lonMin + 180.0 + 1e-9) / cs);
+    const cMax = Math.floor((lonMax + 180.0 - 1e-9) / cs);
+
+    const children = [];
+    for (let r = rMin; r <= rMax; r++) {
+      const sLat = +((r + 0.5) * cs - 90.0).toFixed(4);
+      for (let c = cMin; c <= cMax; c++) {
+        const sLon = +((c + 0.5) * cs - 180.0).toFixed(4);
+        const sId = `${r}_${c}`;
+        let sub = subCells.get(sId);
+        if (!sub) {
+          sub = {
+            cellId: sId,
+            parentCellId: b.cellId,
+            baseCell: b,
+            row: r,
+            col: c,
+            lat: sLat,
+            lon: sLon,
+            subregion: classifySubregion(sLat, sLon),
+            totalHarm: b.totalHarm,
+            records: b.records,
+            byYm: b.byYm,
+            densityFactor: 1.0,
+            areaWeight: 1.0,
+            _rawGrad: 1.0
+          };
+          subCells.set(sId, sub);
+          children.push(sub);
+        } else {
+          // Si una subcelda de 0.10° cae en el borde entre dos celdas de 0.25°,
+          // se asocia a la celda padre cuyo centro esté más cerca.
+          const dCurr = Math.hypot(sLat - sub.baseCell.lat, sLon - sub.baseCell.lon);
+          const dNew = Math.hypot(sLat - b.lat, sLon - b.lon);
+          if (dNew < dCurr) {
+            sub.parentCellId = b.cellId;
+            sub.baseCell = b;
+            sub.records = b.records;
+            sub.byYm = b.byYm;
+            sub.totalHarm = b.totalHarm;
+          }
+        }
+      }
+    }
+    b._children = children;
+  });
+
+  // 2. Agrupar hijos finales por celda base y calcular interpolación espacial IDW 3x3
+  baseMap.forEach((b) => {
+    b._children = [];
+  });
+  subCells.forEach((sub) => {
+    sub.baseCell._children.push(sub);
+  });
+
+  baseMap.forEach((b) => {
+    const kids = b._children;
+    if (!kids || !kids.length) return;
+
+    // Recolectar vecindario 3x3 de celdas de 0.25°
+    const neighbors = [];
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const nb = rcIndex.get(`${b.row + dr}_${b.col + dc}`);
+        if (nb) neighbors.push(nb);
+      }
+    }
+
+    let sumGrad = 0;
+    const baseVal = b.totalHarm + 5.0;
+    for (const sub of kids) {
+      let wSum = 0;
+      let valSum = 0;
+      for (const nb of neighbors) {
+        const dist = Math.hypot(sub.lat - nb.lat, sub.lon - nb.lon);
+        const w = 1.0 / Math.pow(Math.max(0.03, dist), 1.6);
+        wSum += w;
+        valSum += w * (nb.totalHarm + 5.0);
+      }
+      const interp = wSum > 0 ? valSum / wSum : baseVal;
+      // Mezcla suave entre el valor de la celda padre y el gradiente vecino
+      const rawFactor = Math.max(0.35, Math.min(1.85, 0.55 + 0.45 * (interp / baseVal)));
+      sub._rawGrad = rawFactor;
+      sumGrad += rawFactor;
+    }
+
+    const nKids = kids.length;
+    const meanGrad = sumGrad / nKids;
+    for (const sub of kids) {
+      // densityFactor tiene promedio 1.0 dentro de la celda padre (mantiene la escala visual de colores)
+      sub.densityFactor = meanGrad > 0 ? sub._rawGrad / meanGrad : 1.0;
+      // areaWeight suma 1.0 dentro de la celda padre (conserva el conteo total de focos al agregar)
+      sub.areaWeight = sumGrad > 0 ? sub._rawGrad / sumGrad : 1.0 / nKids;
+      sub.totalHarm = b.totalHarm * sub.areaWeight;
+    }
+    delete b._children;
+  });
+
+  return { cellsMeta: subCells, subregionTotals };
 }
 
 function parseValidationCsv(csvText) {
@@ -349,9 +527,14 @@ function getScaleColor(mode, value) {
 
 /** Valor de una celda según el modo del mapa (promedio del periodo, mes elegido o pronóstico). */
 function getCellMapValue(cell) {
+  const df = cell.densityFactor !== undefined ? cell.densityFactor : 1.0;
   if (state.mapMode === "ml") return getMlCellAnnual(cell.cellId);
   if (state.mapMode === "month") {
-    return cell.byYm.get(ymKey(state.focusYear, state.focusMonth)) || 0;
+    return (cell.byYm.get(ymKey(state.focusYear, state.focusMonth)) || 0) * df;
+  }
+  const base = cell.baseCell || cell;
+  if (base._periodRangeKey === state._periodRangeKey && base._periodAvg !== undefined) {
+    return base._periodAvg * df;
   }
   let activeMonths = 0;
   for (let y = state.yearStart; y <= state.yearEnd; y++) {
@@ -362,7 +545,10 @@ function getCellMapValue(cell) {
   for (const r of cell.records) {
     if (r.year >= state.yearStart && r.year <= state.yearEnd) periodHarm += r.harm;
   }
-  return periodHarm / numYears;
+  const avg = periodHarm / numYears;
+  base._periodRangeKey = state._periodRangeKey;
+  base._periodAvg = avg;
+  return avg * df;
 }
 
 function cellTooltipHtml(cell) {
@@ -381,15 +567,38 @@ function cellTooltipHtml(cell) {
  */
 function renderMapGrid() {
   if (!gridLayerGroup || !state.meta) return;
-  const half = state.meta.cell_size_deg / 2.0;
+  const cs = state.meta.cell_size_deg;
+  const half = cs / 2.0;
   const mode = state.mapMode;
+
+  state._periodRangeKey = `${state.yearStart}_${state.yearEnd}`;
+  if (mode === "period" && state.baseCells025) {
+    let activeMonths = 0;
+    for (let y = state.yearStart; y <= state.yearEnd; y++) {
+      activeMonths += y === 2026 ? 10 : 12;
+    }
+    const numYears = Math.max(0.833, activeMonths / 12.0);
+    state.baseCells025.forEach((b) => {
+      if (b._periodRangeKey !== state._periodRangeKey) {
+        let periodHarm = 0;
+        for (const r of b.records) {
+          if (r.year >= state.yearStart && r.year <= state.yearEnd) periodHarm += r.harm;
+        }
+        b._periodAvg = periodHarm / numYears;
+        b._periodRangeKey = state._periodRangeKey;
+      }
+    });
+  }
+
+  const selWeight = cs < 0.25 ? 0.35 : 0.75;
+  const unselWeight = cs < 0.25 ? 0.1 : 0.25;
 
   state.cellsMeta.forEach((cell) => {
     let rect = cellLayers.get(cell.cellId);
     if (!rect) {
       rect = L.rectangle(
         [[cell.lat - half, cell.lon - half], [cell.lat + half, cell.lon + half]],
-        { weight: 0.25 }
+        { weight: unselWeight }
       );
       rect.bindTooltip(() => cellTooltipHtml(cell), { sticky: true });
       rect.on("click", (e) => openCellPopup(cell, e.latlng));
@@ -403,10 +612,10 @@ function renderMapGrid() {
     const noFire = mode === "month" && value <= 0;
 
     rect.setStyle({
-      color: isSelected ? fillColor : "#cbd5e1",
-      weight: isSelected ? 0.75 : 0.25,
+      color: isSelected ? fillColor : (cs < 0.25 ? fillColor : "#cbd5e1"),
+      weight: isSelected ? selWeight : unselWeight,
       fillColor,
-      fillOpacity: noFire ? (isSelected ? 0.12 : 0.05) : isSelected ? 0.65 : 0.12
+      fillOpacity: noFire ? (isSelected ? 0.12 : 0.05) : isSelected ? 0.68 : 0.12
     });
   });
 
@@ -512,20 +721,23 @@ function buildSparklineSvg(totals, years) {
 function openCellPopup(cell, latlng) {
   if (isDrawing || !map) return;
 
+  const df = cell.densityFactor !== undefined ? cell.densityFactor : 1.0;
   const years = [];
   for (let y = 2003; y <= 2026; y++) years.push(y);
   const totals = years.map(() => 0);
-  for (const r of cell.records) totals[r.year - 2003] += r.harm;
+  for (const r of cell.records) totals[r.year - 2003] += r.harm * df;
 
   const full = totals.slice(0, totals.length - 1); // 2003–2025 (años completos)
   const peakIdx = full.indexOf(Math.max(...full));
   const avg = full.reduce((a, b) => a + b, 0) / full.length;
+  const cs = state.meta ? state.meta.cell_size_deg : 0.25;
+  const kmLabel = cs <= 0.05 ? fmtNum(5.5, 1) : cs <= 0.10 ? "11" : "27";
 
   const div = document.createElement("div");
   div.className = "cell-popup";
   div.innerHTML = `
     <div class="cp-title">${t("cp.title")}</div>
-    <div class="cp-sub">${t(`sub.${cell.subregion}`)} · ${t("cp.square")}</div>
+    <div class="cp-sub">${t(`sub.${cell.subregion}`)} · ${t("cp.square.km", { km: kmLabel })}</div>
     ${buildSparklineSvg(totals, years)}
     <div class="cp-axis"><span>2003</span><span>2026*</span></div>
     <div class="cp-stats">
@@ -545,8 +757,9 @@ function openCellPopup(cell, latlng) {
 
 function selectSingleCell(cell) {
   const half = state.meta.cell_size_deg / 2.0;
-  // Margen pequeño para que solo el centro de esta celda quede dentro
-  applyCustomBbox(cell.lon - half + 0.01, cell.lat - half + 0.01, cell.lon + half - 0.01, cell.lat + half - 0.01);
+  const margin = Math.min(0.01, half * 0.2);
+  // Margen pequeño proporcional para que solo el centro de esta celda quede dentro
+  applyCustomBbox(cell.lon - half + margin, cell.lat - half + margin, cell.lon + half - margin, cell.lat + half - margin);
 }
 
 /** Usa un rectángulo (lon/lat mínimos y máximos) como área de interés personalizada. */
@@ -654,13 +867,14 @@ function aggregateSelectedCells() {
   state.selectedCells.forEach((cellId) => {
     const cell = state.cellsMeta.get(cellId);
     if (!cell) return;
+    const w = cell.areaWeight !== undefined ? cell.areaWeight : 1.0;
     for (const r of cell.records) {
       const ym = `${r.year}-${String(r.month).padStart(2, "0")}`;
       const bucket = state.currentSeriesByYm.get(ym);
       if (!bucket) continue;
-      bucket.harm += r.harm;
-      if (r.aqua !== null) bucket.aqua = (bucket.aqua || 0) + r.aqua;
-      if (r.snpp !== null) bucket.snpp = (bucket.snpp || 0) + r.snpp;
+      bucket.harm += r.harm * w;
+      if (r.aqua !== null) bucket.aqua = (bucket.aqua || 0) + r.aqua * w;
+      if (r.snpp !== null) bucket.snpp = (bucket.snpp || 0) + r.snpp * w;
       if (r.source === "snpp_converted_nrt" || r.source === "snpp_nrt") bucket.hasNrt = true;
     }
   });
@@ -1182,12 +1396,13 @@ function getValidationMetrics() {
   state.selectedCells.forEach((cellId) => {
     const cell = state.cellsMeta.get(cellId);
     if (!cell) return;
+    const w = cell.areaWeight !== undefined ? cell.areaWeight : 1.0;
     for (const r of cell.records) {
       if (r.year < 2012 || r.year > 2021) continue;
       if (r.year === 2012 && r.month === 1) continue;
       if (r.year === 2020 && (r.month === 8 || r.month === 9)) continue;
-      const snpp = r.snpp || 0;
-      sumAqua += r.aqua || 0;
+      const snpp = (r.snpp || 0) * w;
+      sumAqua += (r.aqua || 0) * w;
       sumSnppRaw += snpp;
       sumSnppHarm += snpp * getFactor(r.month);
     }
@@ -1319,10 +1534,14 @@ function getMl() {
 /** Celdas-día esperadas (media de las simulaciones) en el año elegido para el mapa. */
 function getMlCellAnnual(cellId) {
   const ml = getMl();
-  const c = ml && ml.cells_projection[cellId];
+  if (!ml) return 0;
+  const cell = state.cellsMeta.get(cellId);
+  const baseCid = cell && cell.parentCellId ? cell.parentCellId : cellId;
+  const df = cell && cell.densityFactor !== undefined ? cell.densityFactor : 1.0;
+  const c = ml.cells_projection[baseCid];
   if (!c) return 0;
   const k = ml.projection_years.indexOf(state.mlYear);
-  return k >= 0 ? c[k] : 0;
+  return k >= 0 ? c[k] * df : 0;
 }
 
 /** Si no existe ml_bundle.js, oculta la pestaña y el modo de mapa (la app sigue funcionando). */
@@ -1568,8 +1787,11 @@ function renderMlProjectionChart(ml) {
   const meanByYear = projYears.map((y, k) => {
     let s = 0;
     state.selectedCells.forEach((cid) => {
-      const c = ml.cells_projection[cid];
-      if (c) s += c[k];
+      const cell = state.cellsMeta.get(cid);
+      const baseCid = cell && cell.parentCellId ? cell.parentCellId : cid;
+      const w = cell && cell.areaWeight !== undefined ? cell.areaWeight : 1.0;
+      const c = ml.cells_projection[baseCid];
+      if (c) s += c[k] * w;
     });
     return s;
   });
@@ -1904,6 +2126,7 @@ function downloadCellsCsv() {
   state.selectedCells.forEach((cellId) => {
     const cell = state.cellsMeta.get(cellId);
     if (!cell) return;
+    const w = cell.areaWeight !== undefined ? cell.areaWeight : 1.0;
     for (const r of cell.records) {
       if (r.year < state.yearStart || r.year > state.yearEnd) continue;
       rows.push([
@@ -1913,9 +2136,9 @@ function downloadCellsCsv() {
         cell.subregion,
         r.year,
         r.month,
-        r.harm,
-        r.aqua !== null ? r.aqua : "",
-        r.snpp !== null ? r.snpp : "",
+        +(r.harm * w).toFixed(2),
+        r.aqua !== null ? Math.round(r.aqua * w) : "",
+        r.snpp !== null ? Math.round(r.snpp * w) : "",
         r.source
       ]);
     }
@@ -2071,6 +2294,23 @@ function bindEvents() {
   }
 
   syncFocusMonthOptions();
+
+  const gridSel = document.getElementById("gridResolution");
+  if (gridSel) {
+    gridSel.addEventListener("change", async (e) => {
+      const newRes = e.target.value;
+      if (newRes === state.gridRes) return;
+      gridSel.disabled = true;
+      try {
+        await loadAllData(newRes);
+        if (gridLayerGroup) gridLayerGroup.clearLayers();
+        cellLayers.clear();
+        recomputeAoiSelection();
+      } finally {
+        gridSel.disabled = false;
+      }
+    });
+  }
 
   // Menú "Descargar": cada opción descarga y cierra el menú
   const menu = document.getElementById("downloadMenu");

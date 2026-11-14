@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
 
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=main2" />
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -90,6 +90,15 @@
             <span class="sep" data-i18n="top.to">a</span>
             <select id="yearEnd" aria-label="Hasta el año" data-i18n-aria="top.toYear"></select>
           </div>
+        </div>
+
+        <div class="tool-cell">
+          <label for="gridResolution" data-i18n="top.grid">Grilla</label>
+          <select id="gridResolution" aria-label="Tamaño de celda" data-i18n-aria="top.grid.aria">
+            <option value="0.25" selected data-i18n="grid.025">0,25° (~27 km · Estándar)</option>
+            <option value="0.10" data-i18n="grid.010">0,10° (~11 km · Detallada)</option>
+            <option value="0.05" data-i18n="grid.005">0,05° (~5,5 km · Fina)</option>
+          </select>
         </div>
 
         <div class="tool-actions">
@@ -264,13 +273,13 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 
   <!-- Fallback de datos autónomo (compatible con file:// y http://) -->
-  <script src="data/processed/data_bundle.js"></script>
+  <script src="data/processed/data_bundle.js?v=main2"></script>
   <!-- Resultados del modelo de Machine Learning (scripts/ml_model.py) -->
-  <script src="data/processed/ml_bundle.js"></script>
+  <script src="data/processed/ml_bundle.js?v=main2"></script>
 
   <!-- Textos ES/EN (debe cargarse antes de app.js) -->
-  <script src="i18n.js"></script>
+  <script src="i18n.js?v=main2"></script>
   <!-- Lógica y renderizado cliente -->
-  <script src="app.js"></script>
+  <script src="app.js?v=main2"></script>
 </body>
 </html>
