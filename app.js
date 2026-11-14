@@ -720,6 +720,8 @@ function switchView(view) {
   document.querySelectorAll(".view-panel").forEach((panel) => {
     panel.classList.toggle("hidden", panel.dataset.view !== view);
   });
+  const pngBtn = document.getElementById("btnPng");
+  if (pngBtn) pngBtn.disabled = view === "ranking";
   renderActiveView();
 }
 
@@ -1517,6 +1519,52 @@ function downloadAoiSeriesCsv() {
   triggerCsvDownload(`pixfire_bolivia_aoi_${state.preset}_${state.yearStart}_${state.yearEnd}.csv`, csv);
 }
 
+/** CSV con el detalle por celda y mes (solo celdas del área y años del rango). */
+function downloadCellsCsv() {
+  const header = [
+    "cell_id", "lat_center", "lon_center", "subregion", "year", "month",
+    "count_harmonized", "count_raw_aqua", "count_raw_snpp", "source"
+  ];
+  const rows = [];
+  state.selectedCells.forEach((cellId) => {
+    const cell = state.cellsMeta.get(cellId);
+    if (!cell) return;
+    for (const r of cell.records) {
+      if (r.year < state.yearStart || r.year > state.yearEnd) continue;
+      rows.push([
+        cell.cellId,
+        cell.lat.toFixed(3),
+        cell.lon.toFixed(3),
+        cell.subregion,
+        r.year,
+        r.month,
+        r.harm,
+        r.aqua !== null ? r.aqua : "",
+        r.snpp !== null ? r.snpp : "",
+        r.source
+      ]);
+    }
+  });
+  // Orden cronológico y luego por celda
+  rows.sort((a, b) => a[4] - b[4] || a[5] - b[5] || String(a[0]).localeCompare(String(b[0])));
+  const csv = [header, ...rows].map((r) => r.join(",")).join("\n");
+  triggerCsvDownload(`pixfire_bolivia_celdas_${state.preset}_${state.yearStart}_${state.yearEnd}.csv`, csv);
+}
+
+/** Descarga el gráfico visible (calendario, serie o ciclo) como PNG. */
+function downloadActiveChartPng() {
+  const charts = { calendar: chartCalendar, series: chartSeries, seasonal: chartSeasonal };
+  const chart = charts[state.activeView];
+  if (!chart) return;
+  const url = chart.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" });
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `pixfire_bolivia_${state.activeView}_${state.preset}_${state.yearStart}_${state.yearEnd}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 function resetToPreset(preset) {
   state.preset = preset;
   if (drawnItems) drawnItems.clearLayers();
@@ -1661,6 +1709,12 @@ function bindEvents() {
   if (dlSeriesBtn) {
     dlSeriesBtn.addEventListener("click", downloadAoiSeriesCsv);
   }
+
+  const dlCellsBtn = document.getElementById("btnDownloadCells");
+  if (dlCellsBtn) dlCellsBtn.addEventListener("click", downloadCellsCsv);
+
+  const pngBtn = document.getElementById("btnPng");
+  if (pngBtn) pngBtn.addEventListener("click", downloadActiveChartPng);
 
   document.querySelectorAll(".map-mode-btn").forEach((btn) => {
     btn.addEventListener("click", () => setMapMode(btn.dataset.mode));

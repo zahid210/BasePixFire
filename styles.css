@@ -959,3 +959,58 @@ select:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Pestañas + botón PNG */
+.view-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.png-btn {
+  height: 26px;
+}
+
+.btn-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Pantallas medianas (laptops ~1366 px): permitir que la barra superior y
+ * la cabecera de pestañas bajen de línea en vez de cortarse */
+.atlas-topbar {
+  height: auto;
+  min-height: 44px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  flex-wrap: wrap;
+}
+
+.toolbar-unit {
+  flex-wrap: wrap;
+  row-gap: 5px;
+}
+
+.tool-cell label,
+.btn-action,
+.tab-btn {
+  white-space: nowrap;
+}
+
+.subblock-header {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 1440px) {
+  .brand-desc {
+    display: none;
+  }
+  .tab-btn {
+    padding: 0 7px;
+  }
+  .toolbar-unit {
+    gap: 8px;
+  }
+}

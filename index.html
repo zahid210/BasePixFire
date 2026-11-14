@@ -100,9 +100,13 @@
         </div>
 
         <div class="tool-actions">
-          <button type="button" id="btnDownloadSeries" class="btn-action primary" title="Descargar serie temporal en CSV">
+          <button type="button" id="btnDownloadSeries" class="btn-action primary" title="Serie mensual agregada del área (con mediana, P25, P75 y anomalía)">
             <svg class="i"><use href="#ic-download" /></svg>
-            <span>Descargar CSV</span>
+            <span>CSV serie</span>
+          </button>
+          <button type="button" id="btnDownloadCells" class="btn-action" title="Detalle por celda y mes del área seleccionada">
+            <svg class="i"><use href="#ic-download" /></svg>
+            <span>CSV celdas</span>
           </button>
           <button type="button" id="btnResetAoi" class="btn-action icon" title="Restablecer filtros a toda Bolivia" aria-label="Restablecer filtros">
             <svg class="i"><use href="#ic-reset" /></svg>
@@ -213,12 +217,18 @@
               <span class="eyebrow-tag" id="stageEyebrow">SERIE HISTÓRICA CONTINUA · CLIC EN UNA CELDA PARA EVALUAR ESE MES</span>
               <h3 id="stageTitle">Calendario de Actividad de Quema (Año × Mes)</h3>
             </div>
-            <!-- Pestañas de vistas temporales -->
+            <!-- Pestañas de vistas temporales + exportar imagen -->
+            <div class="view-actions">
             <div class="tab-bar" role="tablist" aria-label="Vistas temporales">
               <button type="button" role="tab" class="tab-btn active" data-view="calendar" aria-selected="true">Calendario</button>
               <button type="button" role="tab" class="tab-btn" data-view="series" aria-selected="false">Serie temporal</button>
               <button type="button" role="tab" class="tab-btn" data-view="seasonal" aria-selected="false">Ciclo estacional</button>
               <button type="button" role="tab" class="tab-btn" data-view="ranking" aria-selected="false">Ranking</button>
+            </div>
+            <button type="button" id="btnPng" class="btn-action png-btn" title="Descargar el gráfico visible como imagen PNG">
+              <svg class="i"><use href="#ic-download" /></svg>
+              <span>PNG</span>
+            </button>
             </div>
           </div>
 
