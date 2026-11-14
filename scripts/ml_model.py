@@ -136,7 +136,12 @@ def year_frame(cell_ids, cube, y, adj, skip_excluded=True):
     # detección S-NPP (que equivale a ~0,3 celdas-día Aqua).
     burned = annual >= 1.0
     clim = np.nanmean(hist, axis=1)                   # (celdas, 12) normal de la celda
-    last_same = hist[:, -1, :]                        # mismo mes del año anterior
+    last_same = hist[:, -1, :].copy()                 # mismo mes del año anterior
+    if yi >= 2:
+        # nov–dic 2026 no existen (no se completan): para 2027 se usa el último dato real
+        # de ese mes, el de 2025, en vez de inventar un valor.
+        missing = np.isnan(last_same)
+        last_same[missing] = hist[:, -2, :][missing]
     neigh = (adj @ annual[:, -1]) / 8.0
     ys = np.full(len(cell_ids), YS_CAP)
     for k in range(min(YS_CAP - 1, yi), 0, -1):
@@ -348,27 +353,24 @@ def year_effect_sigma(models, df):
     return float(r.std(ddof=1)), {int(k): round(float(v), 4) for k, v in r.items()}
 
 
-def simulate(cell_ids, cube, adj, models, start_year, end_year, n_sims, rng, sigma_year,
-             fill_missing_year=None):
+def simulate(cell_ids, cube, adj, models, start_year, end_year, n_sims, rng, sigma_year):
     """
     Devuelve sims[s, celda, k] = celdas-día anuales simuladas para cada año
-    start_year..end_year (k = 0..). Si fill_missing_year está dado, los meses sin
-    dato de ese año (nov–dic 2026) se completan por simulación y el año entra al resultado.
+    start_year..end_year (k = 0..). La historia observada (incluido 2026 ene–oct, sin
+    completar nov–dic) es el punto de partida.
     """
     p, phi = models["tw_power"], models["tw_phi"]
     beta_hat = models["tw"].params.to_numpy()
     cov = models["tw"].cov_params().to_numpy()
-    years = ([fill_missing_year] if fill_missing_year else []) + list(range(start_year, end_year + 1))
+    years = list(range(start_year, end_year + 1))
     n_cells = len(cell_ids)
     out = np.zeros((n_sims, n_cells, len(years)))
 
-    base_len = (fill_missing_year or start_year) - FIRST_YEAR
+    base_len = start_year - FIRST_YEAR
     for s in range(n_sims):
         beta = rng.multivariate_normal(beta_hat, cov)          # incertidumbre de coeficientes
         sim_cube = np.concatenate(
             [cube[:, :base_len, :], np.zeros((n_cells, len(years), 12))], axis=1)
-        if fill_missing_year:
-            sim_cube[:, base_len, :] = cube[:, base_len, :]    # meses observados de 2026
         for k, y in enumerate(years):
             yi = y - FIRST_YEAR
             df = year_frame(cell_ids, sim_cube, y, adj, skip_excluded=False)
@@ -379,11 +381,7 @@ def simulate(cell_ids, cube, adj, models, start_year, end_year, n_sims, rng, sig
             days = np.array([calendar.monthrange(y, m)[1] for m in df["month"]])
             draw = np.minimum(draw, days)                     # nunca más días que los del mes
             block = draw.reshape(12, n_cells).T               # (celdas, 12)
-            if fill_missing_year and y == fill_missing_year:
-                missing = np.isnan(sim_cube[:, yi, :])
-                sim_cube[:, yi, :] = np.where(missing, block, sim_cube[:, yi, :])
-            else:
-                sim_cube[:, yi, :] = block
+            sim_cube[:, yi, :] = block
             out[s, :, k] = sim_cube[:, yi, :].sum(axis=1)
     return years, out
 
@@ -468,8 +466,11 @@ def main():
     fc_obs = fc[fc["month"] <= FORECAST_LAST_MONTH]
     forecast_metrics = evaluate_all(final, fc_obs)
 
+    # La proyección empieza en 2027: 2026 se deja solo con lo observado (ene–oct)
     pj_years, pj = simulate(cell_ids, cube, adj, final, FORECAST_YEAR + 1, PROJECTION_END,
-                            args.n_sims, rng, sigma_full, fill_missing_year=FORECAST_YEAR)
+                            args.n_sims, rng, sigma_full)
+    obs_2026 = np.nansum(cube[:, FORECAST_YEAR - FIRST_YEAR, :], axis=1)
+    observed_partial = {name: round(float(obs_2026[mask].sum()), 1) for name, mask in masks.items()}
     projection = {name: [{"year": y, **summarize(pj[:, mask, k].sum(axis=1))}
                          for k, y in enumerate(pj_years)]
                   for name, mask in masks.items()}
@@ -480,12 +481,13 @@ def main():
     cells_projection = {cid: [round(float(v), 2) for v in pj[:, i, :].mean(axis=0)]
                         for i, cid in enumerate(cell_ids)}
 
-    print("\nProyección Bolivia (celdas-día/año; 2026 = ene–oct observado + nov–dic simulado):")
+    print(f"\n2026 observado (solo ene–oct, sin completar): {observed_partial['all']:.0f}")
+    print("Proyección Bolivia (celdas-día/año):")
     for r in projection["all"]:
         print(f"  {r['year']}: mediana={r['p50']:.0f} [P10 {r['p10']:.0f} – P90 {r['p90']:.0f}]")
 
     results = {
-        "description": "Modelo de riesgo de fuego por celda-mes y proyección Monte Carlo 2026–2030.",
+        "description": "Modelo de riesgo de fuego por celda-mes y proyección Monte Carlo 2027–2030 (2026 solo observado ene–oct).",
         "unit": "celdas-día con fuego (equivalente MODIS Aqua)",
         "n_cells": int(len(cell_ids)),
         "n_sims": args.n_sims,
@@ -516,6 +518,7 @@ def main():
         "effects": effects,
         "empirical_by_years_since_fire": empirical_by_ys(full),
         "history_annual": history,
+        "observed_partial_2026": observed_partial,
         "projection": projection,
         "cells_projection": cells_projection,
         "generated_on": str(date.today()),
