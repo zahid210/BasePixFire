@@ -35,3 +35,22 @@ python3 scripts/build_dataset.py --cell-size 0.25
 python3 -m http.server 8000
 # Abrir http://localhost:8000 en el navegador
 ```
+
+## 3. Mejoras de interfaz (rama `ivan`, 14/11/2026)
+
+Solo se tocaron `index.html`, `app.js` y `styles.css`. No cambian los datos, el pipeline ni el método de armonización, y no se agregaron librerías.
+
+| Mejora | Dónde se ve | Cómo probarla |
+|---|---|---|
+| Pestaña **Serie temporal** | Panel derecho | Aqua crudo, S-NPP crudo, S-NPP × k_m y serie armonizada, con franjas de calibración, apagón 2020 y relevo 2022. Zoom con la rueda o el deslizador; clic en la leyenda para ocultar líneas; clic en el gráfico para evaluar ese mes |
+| Pestaña **Ciclo estacional** | Panel derecho | Barras del año evaluado vs. mediana y banda P25–P75 (2003–2025). Rojo = por encima de lo normal, verde = por debajo |
+| Pestaña **Ranking** | Panel derecho | Top 5 años y top 5 meses del área seleccionada; clic en una fila para evaluar ese mes |
+| **Mapa por mes** + **▶ Animar** | Barra sobre el mapa | "Mes evaluado" pinta las celdas del mes elegido; "Animar" recorre los meses del rango de años |
+| **Leyenda** del mapa | Esquina inferior izquierda | Cambia según el modo del mapa |
+| **Popup de celda** | Clic en una celda | Historia anual 2003–2026, promedio, peor año y botón "Analizar esta celda" |
+| **Área por coordenadas** | Debajo del mapa | Lat/Lon mínimo y máximo → Aplicar (con validación) |
+| **CSV celdas** y **PNG** | Barra superior / junto a las pestañas | Detalle por celda y mes del área; imagen del gráfico visible |
+
+Notas:
+- El ranking de años marca 2026 con `*` porque solo cubre enero–octubre.
+- Probado con capturas headless de Edge a 1500×900 y 1366×768. Falta una prueba manual de clics reales (dibujar polígono, popup y descargas) en Chrome/Firefox.
