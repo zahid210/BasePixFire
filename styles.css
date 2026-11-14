@@ -510,6 +510,46 @@ select:hover {
   min-height: 220px;
 }
 
+/* Pestañas de vistas temporales */
+.tab-bar {
+  display: flex;
+  border: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background-color: var(--bg-surface);
+  color: var(--text-muted);
+  border: none;
+  border-right: 1px solid var(--border-strong);
+  transition: background-color var(--anim-speed) ease, color var(--anim-speed) ease;
+}
+
+.tab-btn:last-child {
+  border-right: none;
+}
+
+.tab-btn:hover {
+  background-color: var(--bg-subtle);
+  color: var(--text-main);
+}
+
+.tab-btn.active {
+  background-color: var(--text-main);
+  color: #ffffff;
+}
+
+.calendar-chart-wrap .chart-canvas {
+  position: absolute;
+  inset: 0;
+}
+
 /* C. Sub-bloque Validación Científica */
 .block-validation {
   padding: 8px 16px 8px;
@@ -619,8 +659,13 @@ select:hover {
   .map-container {
     height: 380px;
   }
-  .chart-canvas {
+  .chart-canvas,
+  .calendar-chart-wrap {
     height: 340px;
+  }
+  .subblock-header {
+    flex-wrap: wrap;
+    gap: 6px;
   }
   .validation-strip-grid {
     grid-template-columns: 1fr 1fr;

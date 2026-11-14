@@ -192,14 +192,21 @@
         <article class="time-subblock block-calendar">
           <div class="subblock-header">
             <div>
-              <span class="eyebrow-tag" id="stageEyebrow">SERIE HISTÓRICA CONTINUA (2003–2026)</span>
+              <span class="eyebrow-tag" id="stageEyebrow">SERIE HISTÓRICA CONTINUA · CLIC EN UNA CELDA PARA EVALUAR ESE MES</span>
               <h3 id="stageTitle">Calendario de Actividad de Quema (Año × Mes)</h3>
             </div>
-            <span class="mini-hint">Haz clic en cualquier celda para inspeccionarla</span>
+            <!-- Pestañas de vistas temporales -->
+            <div class="tab-bar" role="tablist" aria-label="Vistas temporales">
+              <button type="button" role="tab" class="tab-btn active" data-view="calendar" aria-selected="true">Calendario</button>
+              <button type="button" role="tab" class="tab-btn" data-view="series" aria-selected="false">Serie temporal</button>
+              <button type="button" role="tab" class="tab-btn" data-view="seasonal" aria-selected="false">Ciclo estacional</button>
+            </div>
           </div>
 
           <div class="calendar-chart-wrap">
-            <div id="chartCalendar" class="chart-canvas" role="img" aria-label="Matriz de calor de quema Año por Mes"></div>
+            <div id="chartCalendar" class="chart-canvas view-panel" data-view="calendar" role="img" aria-label="Matriz de calor de quema Año por Mes"></div>
+            <div id="chartSeries" class="chart-canvas view-panel hidden" data-view="series" role="img" aria-label="Serie mensual: MODIS Aqua, VIIRS S-NPP crudo y armonizado"></div>
+            <div id="chartSeasonal" class="chart-canvas view-panel hidden" data-view="seasonal" role="img" aria-label="Ciclo estacional del año evaluado frente a la mediana histórica"></div>
             <span id="calendarSummarySR" class="sr-only"></span>
           </div>
         </article>

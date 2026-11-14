@@ -37,6 +37,7 @@ const state = {
   focusYear: 2026,
   focusMonth: 10,
   colorRamp: "fire",
+  activeView: "calendar", // calendar | series | seasonal
   currentSeriesByYm: new Map(),
   subregionTotals: {
     chiquitania_llanos: 0,
@@ -49,6 +50,27 @@ let map = null;
 let gridLayerGroup = null;
 let drawnItems = null;
 let chartCalendar = null;
+let chartSeries = null;
+let chartSeasonal = null;
+
+/** Factor k_m del mes (con respaldo al factor anual si faltara). */
+function getFactor(month) {
+  if (!state.meta) return 1;
+  const f = state.meta.factors_by_month ? state.meta.factors_by_month[String(month)] : null;
+  return Number(f != null ? f : state.meta.factor_annual_fallback || 1);
+}
+
+function ymKey(year, month) {
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function round1(v) {
+  return Math.round(v * 10) / 10;
+}
+
+function fmtNum(v, digits = 1) {
+  return Number(v).toLocaleString("es-BO", { maximumFractionDigits: digits });
+}
 
 /* =========================================================================
  * 1. Carga y parseo de datos estáticos (Universal: HTTP o local file://)
@@ -429,7 +451,373 @@ function updateAllViews() {
   const histStats = computeHistoricalStatsByMonth();
   updateTelemetryCard(histStats);
   populateScienceRailFromMeta();
-  renderCalendarChart();
+  renderActiveView();
+}
+
+/** Cambia el mes evaluado desde cualquier vista (calendario, serie, ciclo, ranking). */
+function setFocus(year, month) {
+  if (year === 2026 && month > 10) return; // sin datos después de oct 2026
+  state.focusYear = year;
+  state.focusMonth = month;
+  const mSel = document.getElementById("focusMonth");
+  const ySel = document.getElementById("focusYear");
+  if (mSel) mSel.value = String(month);
+  if (ySel) ySel.value = String(year);
+  syncFocusMonthOptions();
+  updateAllViews();
+}
+
+/* =========================================================================
+ * 5b. Pestañas de vistas temporales
+ * ========================================================================= */
+const VIEW_TEXTS = {
+  calendar: {
+    eyebrow: "SERIE HISTÓRICA CONTINUA · CLIC EN UNA CELDA PARA EVALUAR ESE MES",
+    title: () => "Calendario de Actividad de Quema (Año × Mes)"
+  },
+  series: {
+    eyebrow: "AQUA vs. VIIRS · ARRASTRA PARA ZOOM · CLIC EN LA LEYENDA PARA OCULTAR LÍNEAS",
+    title: () => "Serie Mensual y Corrección del Salto entre Sensores"
+  },
+  seasonal: {
+    eyebrow: "AÑO EVALUADO vs. MEDIANA Y BANDA NORMAL 2003–2025 · CLIC EN UNA BARRA",
+    title: () => `Ciclo Estacional ${state.focusYear} vs. Histórico`
+  }
+};
+
+function switchView(view) {
+  state.activeView = view;
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    const isActive = btn.dataset.view === view;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  document.querySelectorAll(".view-panel").forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.view !== view);
+  });
+  renderActiveView();
+}
+
+/** Dibuja solo la vista visible (ECharts no puede medir un div oculto). */
+function renderActiveView() {
+  const texts = VIEW_TEXTS[state.activeView];
+  if (texts) {
+    const eyebrowEl = document.getElementById("stageEyebrow");
+    const titleEl = document.getElementById("stageTitle");
+    if (eyebrowEl) eyebrowEl.textContent = texts.eyebrow;
+    if (titleEl) titleEl.textContent = texts.title();
+  }
+
+  if (state.activeView === "series") {
+    renderSeriesChart();
+    if (chartSeries) chartSeries.resize();
+  } else if (state.activeView === "seasonal") {
+    renderSeasonalChart();
+    if (chartSeasonal) chartSeasonal.resize();
+  } else {
+    renderCalendarChart();
+    if (chartCalendar) chartCalendar.resize();
+  }
+}
+
+/* =========================================================================
+ * 5c. Serie temporal: Aqua crudo vs. S-NPP crudo vs. S-NPP × k_m vs. armonizada
+ * ========================================================================= */
+const TOOLTIP_STYLE = {
+  backgroundColor: "rgba(15, 23, 42, 0.96)",
+  borderColor: "#e2e8f0",
+  borderWidth: 1,
+  textStyle: { color: "#ffffff", fontFamily: "Sora, sans-serif", fontSize: 11 }
+};
+
+function getSeriesRowsInRange() {
+  const rows = [];
+  // El Map se llena en orden cronológico, así que rows queda ordenado.
+  state.currentSeriesByYm.forEach((v, ym) => {
+    if (v.year >= state.yearStart && v.year <= state.yearEnd) rows.push({ ym, ...v });
+  });
+  return rows;
+}
+
+function renderSeriesChart() {
+  const dom = document.getElementById("chartSeries");
+  if (!dom) return;
+
+  if (!chartSeries) {
+    chartSeries = echarts.init(dom);
+    // Clic en cualquier punto del área del gráfico → evaluar ese mes
+    chartSeries.getZr().on("click", (e) => {
+      const px = [e.offsetX, e.offsetY];
+      if (!chartSeries.containPixel("grid", px)) return;
+      const idx = chartSeries.convertFromPixel({ seriesIndex: 0 }, px)[0];
+      const label = chartSeries._labels && chartSeries._labels[idx];
+      if (!label) return;
+      const [y, m] = label.split("-").map((s) => parseInt(s, 10));
+      setFocus(y, m);
+    });
+  }
+
+  const rows = getSeriesRowsInRange();
+  const labels = rows.map((r) => r.ym);
+  chartSeries._labels = labels;
+  if (!labels.length) {
+    chartSeries.clear();
+    return;
+  }
+
+  const harm = rows.map((r) => round1(r.harm));
+  const aqua = rows.map((r) => (r.aqua === null ? null : r.aqua));
+  const snppRaw = rows.map((r) => (r.snpp === null ? null : r.snpp));
+  const snppConv = rows.map((r) => (r.snpp === null ? null : round1(r.snpp * getFactor(r.month))));
+
+  // Franjas de contexto, recortadas al rango de años visible
+  const first = labels[0];
+  const last = labels[labels.length - 1];
+  const areas = [];
+  const addArea = (name, from, to, color) => {
+    const a = from < first ? first : from;
+    const b = to > last ? last : to;
+    if (a <= b) {
+      areas.push([
+        { name, xAxis: a, itemStyle: { color } },
+        { xAxis: b }
+      ]);
+    }
+  };
+  addArea("Calibración k_m", "2012-02", "2021-12", "rgba(15, 118, 110, 0.07)");
+  addArea("Apagón Aqua", "2020-08", "2020-09", "rgba(100, 116, 139, 0.30)");
+  addArea("Relevo VIIRS (deriva Aqua)", "2022-01", "2026-10", "rgba(245, 158, 11, 0.10)");
+
+  const focusYm = ymKey(state.focusYear, state.focusMonth);
+  const focusLine = labels.includes(focusYm)
+    ? {
+        symbol: "none",
+        silent: true,
+        lineStyle: { color: "#0f172a", type: "dashed", width: 1 },
+        label: { show: false },
+        data: [{ xAxis: focusYm }]
+      }
+    : undefined;
+
+  const option = {
+    backgroundColor: "#ffffff",
+    animation: false,
+    tooltip: {
+      ...TOOLTIP_STYLE,
+      trigger: "axis",
+      valueFormatter: (v) => (v === null || v === undefined || Number.isNaN(v) ? "—" : fmtNum(v))
+    },
+    legend: {
+      top: 0,
+      itemWidth: 14,
+      itemHeight: 8,
+      textStyle: { fontSize: 10, color: "#475569", fontFamily: "Sora" }
+    },
+    grid: { top: 30, bottom: 50, left: 48, right: 16 },
+    xAxis: {
+      type: "category",
+      data: labels,
+      boundaryGap: false,
+      axisLine: { lineStyle: { color: "#cbd5e1" } },
+      axisLabel: { color: "#475569", fontSize: 10, fontFamily: "Sora" },
+      axisTick: { show: false }
+    },
+    yAxis: {
+      type: "value",
+      name: "celdas-día",
+      nameTextStyle: { fontSize: 9, color: "#64748b" },
+      splitLine: { lineStyle: { color: "#f1f5f9" } },
+      axisLabel: { color: "#475569", fontSize: 10, fontFamily: "Sora" }
+    },
+    dataZoom: [
+      { type: "inside" },
+      { type: "slider", height: 14, bottom: 6, borderColor: "#e2e8f0", textStyle: { fontSize: 9 } }
+    ],
+    series: [
+      {
+        name: "Armonizada (eq. Aqua)",
+        type: "line",
+        data: harm,
+        showSymbol: false,
+        z: 5,
+        lineStyle: { width: 2.2, color: "#0f172a" },
+        itemStyle: { color: "#0f172a" },
+        markArea: {
+          silent: true,
+          label: { fontSize: 9, color: "#475569", position: "insideTop" },
+          data: areas
+        },
+        markLine: focusLine
+      },
+      {
+        name: "Aqua crudo",
+        type: "line",
+        data: aqua,
+        showSymbol: false,
+        lineStyle: { width: 1.2, color: "#0284c7" },
+        itemStyle: { color: "#0284c7" }
+      },
+      {
+        name: "S-NPP crudo",
+        type: "line",
+        data: snppRaw,
+        showSymbol: false,
+        lineStyle: { width: 1.2, color: "#dc2626", opacity: 0.8 },
+        itemStyle: { color: "#dc2626" }
+      },
+      {
+        name: "S-NPP × k_m",
+        type: "line",
+        data: snppConv,
+        showSymbol: false,
+        lineStyle: { width: 1.2, color: "#0f766e", type: "dashed" },
+        itemStyle: { color: "#0f766e" }
+      }
+    ]
+  };
+
+  // notMerge=false para conservar el zoom del usuario entre actualizaciones
+  chartSeries.setOption(option, { replaceMerge: ["series"] });
+}
+
+/* =========================================================================
+ * 5d. Ciclo estacional: año evaluado vs. mediana y banda normal (P25–P75)
+ * ========================================================================= */
+function renderSeasonalChart() {
+  const dom = document.getElementById("chartSeasonal");
+  if (!dom) return;
+
+  if (!chartSeasonal) {
+    chartSeasonal = echarts.init(dom);
+    chartSeasonal.on("click", (params) => {
+      if (params.seriesType === "bar") setFocus(state.focusYear, params.dataIndex + 1);
+    });
+  }
+
+  const hist = computeHistoricalStatsByMonth();
+  const p25 = [];
+  const band = [];
+  const median = [];
+  const current = [];
+
+  for (let m = 1; m <= 12; m++) {
+    const s = hist[m];
+    p25.push(round1(s.p25));
+    band.push(round1(s.p75 - s.p25));
+    median.push(round1(s.median));
+
+    const bucket = state.currentSeriesByYm.get(ymKey(state.focusYear, m));
+    if (!bucket) {
+      current.push({ value: null });
+      continue;
+    }
+    const v = round1(bucket.harm);
+    // Color según dónde cae el mes respecto a lo normal
+    let color = "#94a3b8";
+    if (v > s.p75) color = "#c2410c";
+    else if (v < s.p25) color = "#0f766e";
+    const isFocus = m === state.focusMonth;
+    current.push({
+      value: v,
+      itemStyle: {
+        color,
+        borderColor: isFocus ? "#0f172a" : color,
+        borderWidth: isFocus ? 2 : 0
+      }
+    });
+  }
+
+  const option = {
+    backgroundColor: "#ffffff",
+    animation: false,
+    tooltip: {
+      ...TOOLTIP_STYLE,
+      trigger: "axis",
+      formatter: (items) => {
+        const m = items[0].dataIndex + 1;
+        const s = hist[m];
+        const b = state.currentSeriesByYm.get(ymKey(state.focusYear, m));
+        const val = b ? fmtNum(b.harm) : "sin datos";
+        let estado = "";
+        if (b) {
+          if (b.harm > s.p75) estado = "<span style='color:#fdba74'>▲ Por encima de lo normal</span>";
+          else if (b.harm < s.p25) estado = "<span style='color:#5eead4'>▼ Por debajo de lo normal</span>";
+          else estado = "<span style='color:#cbd5e1'>● Dentro de lo normal</span>";
+        }
+        return `
+          <div style="font-weight:700;margin-bottom:3px">${MONTH_FULL_NAMES[m - 1]} ${state.focusYear}</div>
+          <div>Valor: <b>${val}</b> celdas-día</div>
+          <div>Mediana 2003–2025: <b>${fmtNum(s.median)}</b></div>
+          <div>Banda normal: ${fmtNum(s.p25)} – ${fmtNum(s.p75)}</div>
+          <div style="margin-top:3px">${estado}</div>`;
+      }
+    },
+    legend: {
+      top: 0,
+      data: [`Año ${state.focusYear}`, "Mediana 2003–2025", "Banda normal (P25–P75)"],
+      itemWidth: 14,
+      itemHeight: 8,
+      textStyle: { fontSize: 10, color: "#475569", fontFamily: "Sora" }
+    },
+    grid: { top: 30, bottom: 26, left: 48, right: 16 },
+    xAxis: {
+      type: "category",
+      data: MONTH_NAMES,
+      axisLine: { lineStyle: { color: "#cbd5e1" } },
+      axisLabel: { color: "#475569", fontSize: 11, fontFamily: "Sora" },
+      axisTick: { show: false }
+    },
+    yAxis: {
+      type: "value",
+      name: "celdas-día",
+      nameTextStyle: { fontSize: 9, color: "#64748b" },
+      splitLine: { lineStyle: { color: "#f1f5f9" } },
+      axisLabel: { color: "#475569", fontSize: 10, fontFamily: "Sora" }
+    },
+    series: [
+      // Banda P25–P75 como área apilada (base invisible + ancho de banda)
+      {
+        name: "P25",
+        type: "line",
+        stack: "iqr",
+        data: p25,
+        symbol: "none",
+        lineStyle: { opacity: 0 },
+        tooltip: { show: false },
+        silent: true
+      },
+      {
+        name: "Banda normal (P25–P75)",
+        type: "line",
+        stack: "iqr",
+        data: band,
+        symbol: "none",
+        lineStyle: { opacity: 0 },
+        areaStyle: { color: "rgba(148, 163, 184, 0.28)" },
+        itemStyle: { color: "rgba(148, 163, 184, 0.6)" },
+        silent: true
+      },
+      {
+        name: `Año ${state.focusYear}`,
+        type: "bar",
+        data: current,
+        barWidth: "45%",
+        itemStyle: { color: "#94a3b8" }
+      },
+      {
+        name: "Mediana 2003–2025",
+        type: "line",
+        data: median,
+        symbol: "circle",
+        symbolSize: 4,
+        lineStyle: { color: "#0f172a", width: 1.5, type: "dashed" },
+        itemStyle: { color: "#0f172a" },
+        z: 5
+      }
+    ]
+  };
+
+  chartSeasonal.setOption(option, true);
 }
 
 function updateTelemetryCard(histStats) {
@@ -614,18 +1002,8 @@ function renderCalendarChart() {
     chartCalendar = echarts.init(dom);
     chartCalendar.on("click", (params) => {
       if (params.value && params.value.length === 3) {
-        const mIdx = params.value[0];
         const yLabel = chartCalendar._yearsList[params.value[1]];
-        state.focusMonth = mIdx + 1;
-        state.focusYear = parseInt(yLabel, 10);
-
-        const mSel = document.getElementById("focusMonth");
-        const ySel = document.getElementById("focusYear");
-        if (mSel) mSel.value = String(state.focusMonth);
-        if (ySel) ySel.value = String(state.focusYear);
-        syncFocusMonthOptions();
-
-        updateAllViews();
+        setFocus(parseInt(yLabel, 10), params.value[0] + 1);
       }
     });
   }
@@ -687,7 +1065,7 @@ function renderCalendarChart() {
     },
     grid: {
       top: 15,
-      bottom: 48,
+      bottom: 76,
       left: 50,
       right: 20
     },
@@ -900,7 +1278,7 @@ function bindEvents() {
   if (colorSel) {
     colorSel.addEventListener("change", (e) => {
       state.colorRamp = e.target.value;
-      renderCalendarChart();
+      renderActiveView();
     });
   }
 
@@ -937,8 +1315,14 @@ function bindEvents() {
     dlSeriesBtn.addEventListener("click", downloadAoiSeriesCsv);
   }
 
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => switchView(btn.dataset.view));
+  });
+
   window.addEventListener("resize", () => {
-    if (chartCalendar) chartCalendar.resize();
+    [chartCalendar, chartSeries, chartSeasonal].forEach((c) => {
+      if (c) c.resize();
+    });
     if (map) map.invalidateSize();
   });
 }
