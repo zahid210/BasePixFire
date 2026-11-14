@@ -129,13 +129,23 @@
           <span class="status-chip" id="aoiStatsBadge">Cargando grilla...</span>
         </div>
 
+        <!-- Barra del mapa: qué se pinta y animación mes a mes -->
+        <div class="map-toolbar">
+          <span class="map-toolbar-label">COLOREAR POR</span>
+          <div class="seg-control" role="group" aria-label="Qué muestra el mapa">
+            <button type="button" class="map-mode-btn active" data-mode="period" aria-pressed="true">Promedio del rango</button>
+            <button type="button" class="map-mode-btn" data-mode="month" aria-pressed="false">Mes evaluado</button>
+          </div>
+          <button type="button" id="btnPlay" class="btn-action play-btn" aria-label="Animar mes a mes">▶ Animar</button>
+        </div>
+
         <!-- Visor del Mapa Leaflet en modo claro -->
         <div class="map-container">
           <div id="map" class="map-canvas"></div>
         </div>
 
         <div class="pane-footer-note">
-          <span>Selecciona un preset arriba o usa el lápiz (esquina superior derecha del mapa) para recortar un polígono.</span>
+          <span>Selecciona un preset arriba, usa el lápiz (esquina superior derecha del mapa) para recortar un polígono o haz clic en una celda para ver su historia.</span>
         </div>
       </section>
 

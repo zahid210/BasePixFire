@@ -38,6 +38,8 @@ const state = {
   focusMonth: 10,
   colorRamp: "fire",
   activeView: "calendar", // calendar | series | seasonal
+  mapMode: "period", // period (promedio del rango de años) | month (mes evaluado)
+  animTimer: null,
   currentSeriesByYm: new Map(),
   subregionTotals: {
     chiquitania_llanos: 0,
@@ -49,6 +51,8 @@ const state = {
 let map = null;
 let gridLayerGroup = null;
 let drawnItems = null;
+const cellLayers = new Map(); // cell_id -> L.rectangle (se crean una sola vez)
+let isDrawing = false; // evita abrir popups de celda mientras se dibuja un polígono
 let chartCalendar = null;
 let chartSeries = null;
 let chartSeasonal = null;
@@ -123,13 +127,14 @@ function parseCellsCsv(csvText, cellSize) {
       const lat = (row + 0.5) * cellSize - 90.0;
       const lon = (col + 0.5) * cellSize - 180.0;
       const subregion = classifySubregion(lat, lon);
-      cellObj = { cellId, row, col, lat, lon, subregion, totalHarm: 0, records: [] };
+      cellObj = { cellId, row, col, lat, lon, subregion, totalHarm: 0, records: [], byYm: new Map() };
       state.cellsMeta.set(cellId, cellObj);
     }
 
     const rec = { cellId, year, month, harm, aqua, snpp, source };
     cellObj.totalHarm += harm;
     cellObj.records.push(rec);
+    cellObj.byYm.set(ymKey(year, month), harm);
     state.allRecords.push(rec);
     state.subregionTotals[cellObj.subregion] = (state.subregionTotals[cellObj.subregion] || 0) + harm;
   }
@@ -163,7 +168,8 @@ function initMap() {
     zoom: 5,
     minZoom: 4,
     maxZoom: 10,
-    zoomControl: true
+    zoomControl: true,
+    preferCanvas: true
   });
 
   const CARTO_KEY = "cb1_58lv_1_5016ded4d19a88b491106fc0";
@@ -196,6 +202,14 @@ function initMap() {
   L.control.layers(baseMaps, null, { position: "topleft" }).addTo(map);
 
   gridLayerGroup = L.layerGroup().addTo(map);
+
+  const legend = L.control({ position: "bottomleft" });
+  legend.onAdd = () => {
+    const div = L.DomUtil.create("div", "map-legend");
+    div.id = "mapLegend";
+    return div;
+  };
+  legend.addTo(map);
   drawnItems = new L.FeatureGroup().addTo(map);
 
   if (typeof L.Control !== "undefined" && typeof L.Control.Draw !== "undefined") {
@@ -232,6 +246,13 @@ function initMap() {
         recomputeAoiSelection();
       });
 
+      map.on(L.Draw.Event.DRAWSTART, () => {
+        isDrawing = true;
+      });
+      map.on(L.Draw.Event.DRAWSTOP, () => {
+        isDrawing = false;
+      });
+
       map.on(L.Draw.Event.DELETED, () => {
         resetToPreset("all");
       });
@@ -239,57 +260,256 @@ function initMap() {
   }
 }
 
-function getDensityColor(annualAvg) {
-  if (annualAvg > 25) return "#b91c1c";
-  if (annualAvg > 10) return "#ea580c";
-  if (annualAvg > 2) return "#fb923c";
-  return "#0284c7";
+/* Escalas de color del mapa. Modo "periodo": promedio anual de celdas-día.
+ * Modo "mes": celdas-día del mes evaluado (máximo posible = días del mes). */
+const MAP_SCALES = {
+  period: {
+    title: "Promedio anual (celdas-día/año)",
+    classes: [
+      { min: 25, color: "#b91c1c", label: "> 25" },
+      { min: 10, color: "#ea580c", label: "10 – 25" },
+      { min: 2, color: "#fb923c", label: "2 – 10" },
+      { min: -Infinity, color: "#0284c7", label: "≤ 2" }
+    ]
+  },
+  month: {
+    title: "Celdas-día en el mes",
+    classes: [
+      { min: 15, color: "#7c2d12", label: "> 15" },
+      { min: 7, color: "#b91c1c", label: "7 – 15" },
+      { min: 3, color: "#ea580c", label: "3 – 7" },
+      { min: 0, color: "#fdba74", label: "1 – 3" },
+      { min: -Infinity, color: "#cbd5e1", label: "Sin fuego" }
+    ]
+  }
+};
+
+function getScaleColor(mode, value) {
+  const classes = MAP_SCALES[mode].classes;
+  const found = classes.find((c) => value > c.min);
+  return found ? found.color : classes[classes.length - 1].color;
 }
 
-function renderMapGrid() {
-  if (!gridLayerGroup || !state.meta) return;
-  gridLayerGroup.clearLayers();
-  const half = state.meta.cell_size_deg / 2.0;
-
+/** Valor de una celda según el modo del mapa (promedio del periodo o mes evaluado). */
+function getCellMapValue(cell) {
+  if (state.mapMode === "month") {
+    return cell.byYm.get(ymKey(state.focusYear, state.focusMonth)) || 0;
+  }
   let activeMonths = 0;
   for (let y = state.yearStart; y <= state.yearEnd; y++) {
     activeMonths += y === 2026 ? 10 : 12;
   }
   const numYears = Math.max(0.833, activeMonths / 12.0);
+  let periodHarm = 0;
+  for (const r of cell.records) {
+    if (r.year >= state.yearStart && r.year <= state.yearEnd) periodHarm += r.harm;
+  }
+  return periodHarm / numYears;
+}
+
+function cellTooltipHtml(cell) {
+  const head = `<strong>Celda ${cell.cellId}</strong><br>Centro: ${cell.lat.toFixed(3)}°, ${cell.lon.toFixed(3)}°<br>`;
+  const v = getCellMapValue(cell);
+  const body = state.mapMode === "month"
+    ? `${MONTH_FULL_NAMES[state.focusMonth - 1]} ${state.focusYear}: <b>${fmtNum(v)}</b> celdas-día`
+    : `Promedio ${state.yearStart}–${state.yearEnd}: <b>${fmtNum(v)}</b> celdas-día/año`;
+  return head + body + "<br><span style='color:#64748b'>Clic para ver su historia</span>";
+}
+
+/**
+ * Pinta la grilla. Los rectángulos se crean una sola vez y luego solo se
+ * actualiza su estilo (necesario para que la animación mes a mes sea fluida).
+ */
+function renderMapGrid() {
+  if (!gridLayerGroup || !state.meta) return;
+  const half = state.meta.cell_size_deg / 2.0;
+  const mode = state.mapMode;
 
   state.cellsMeta.forEach((cell) => {
-    const isSelected = state.selectedCells.has(cell.cellId);
-    let periodHarm = 0;
-    for (const r of cell.records) {
-      if (r.year >= state.yearStart && r.year <= state.yearEnd) {
-        periodHarm += r.harm;
-      }
+    let rect = cellLayers.get(cell.cellId);
+    if (!rect) {
+      rect = L.rectangle(
+        [[cell.lat - half, cell.lon - half], [cell.lat + half, cell.lon + half]],
+        { weight: 0.25 }
+      );
+      rect.bindTooltip(() => cellTooltipHtml(cell), { sticky: true });
+      rect.on("click", (e) => openCellPopup(cell, e.latlng));
+      cellLayers.set(cell.cellId, rect);
+      gridLayerGroup.addLayer(rect);
     }
-    const annualAvg = periodHarm / numYears;
-    const fillColor = getDensityColor(annualAvg);
 
-    const bounds = [
-      [cell.lat - half, cell.lon - half],
-      [cell.lat + half, cell.lon + half]
-    ];
+    const isSelected = state.selectedCells.has(cell.cellId);
+    const value = getCellMapValue(cell);
+    const fillColor = getScaleColor(mode, value);
+    const noFire = mode === "month" && value <= 0;
 
-    const rect = L.rectangle(bounds, {
+    rect.setStyle({
       color: isSelected ? fillColor : "#cbd5e1",
       weight: isSelected ? 0.75 : 0.25,
-      fillColor: fillColor,
-      fillOpacity: isSelected ? 0.6 : 0.12
+      fillColor,
+      fillOpacity: noFire ? (isSelected ? 0.12 : 0.05) : isSelected ? 0.65 : 0.12
     });
-
-    rect.bindTooltip(
-      `<strong>Celda ${cell.cellId}</strong><br>` +
-      `Centro: ${cell.lat.toFixed(3)}°, ${cell.lon.toFixed(3)}°<br>` +
-      `Promedio (${state.yearStart}–${state.yearEnd}): ${annualAvg.toFixed(1)} celdas-día/año<br>` +
-      `Acumulado (${state.yearStart}–${state.yearEnd}): ${periodHarm.toFixed(1)} celdas-día`,
-      { sticky: true }
-    );
-
-    gridLayerGroup.addLayer(rect);
   });
+
+  updateMapLegend();
+}
+
+function updateMapLegend() {
+  const el = document.getElementById("mapLegend");
+  if (!el) return;
+  const scale = MAP_SCALES[state.mapMode];
+  const when = state.mapMode === "month"
+    ? `${MONTH_FULL_NAMES[state.focusMonth - 1]} ${state.focusYear}`
+    : `${state.yearStart}–${state.yearEnd}`;
+  el.innerHTML =
+    `<div class="legend-when">${when}</div>` +
+    `<div class="legend-title">${scale.title}</div>` +
+    scale.classes
+      .map((c) => `<div class="legend-row"><i style="background:${c.color}"></i>${c.label}</div>`)
+      .join("");
+}
+
+/* -------------------------------------------------------------------------
+ * Modo del mapa y animación mes a mes
+ * ------------------------------------------------------------------------- */
+function setMapMode(mode) {
+  state.mapMode = mode;
+  document.querySelectorAll(".map-mode-btn").forEach((b) => {
+    const active = b.dataset.mode === mode;
+    b.classList.toggle("active", active);
+    b.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  if (mode === "period") stopAnimation();
+  renderMapGrid();
+}
+
+function nextMonth(year, month) {
+  let y = year;
+  let m = month + 1;
+  if (m > 12) {
+    m = 1;
+    y += 1;
+  }
+  // Si nos salimos del rango (o pasamos oct 2026), volvemos al inicio
+  if (y > state.yearEnd || (y === 2026 && m > 10)) {
+    y = state.yearStart;
+    m = 1;
+  }
+  return [y, m];
+}
+
+function startAnimation() {
+  if (state.animTimer) return;
+  if (state.mapMode !== "month") setMapMode("month");
+  const btn = document.getElementById("btnPlay");
+  if (btn) {
+    btn.classList.add("playing");
+    btn.textContent = "❚❚ Pausa";
+    btn.setAttribute("aria-label", "Pausar animación");
+  }
+  state.animTimer = setInterval(() => {
+    const [y, m] = nextMonth(state.focusYear, state.focusMonth);
+    setFocus(y, m);
+  }, 700);
+}
+
+function stopAnimation() {
+  if (state.animTimer) {
+    clearInterval(state.animTimer);
+    state.animTimer = null;
+  }
+  const btn = document.getElementById("btnPlay");
+  if (btn) {
+    btn.classList.remove("playing");
+    btn.textContent = "▶ Animar";
+    btn.setAttribute("aria-label", "Animar mes a mes");
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * Popup de celda: mini-gráfico de su historia anual y selección como AOI
+ * ------------------------------------------------------------------------- */
+const SUBREGION_NAMES = {
+  chiquitania_llanos: "Chiquitanía y Llanos",
+  amazonia_beni_norte: "Amazonía y Beni Norte",
+  andina_valles: "Andina y Valles"
+};
+
+/** Barras SVG simples con el total anual armonizado de la celda (2003–2026). */
+function buildSparklineSvg(totals, years) {
+  const w = 230;
+  const h = 56;
+  const max = Math.max(1, ...totals);
+  const bw = w / totals.length;
+  const bars = totals
+    .map((v, i) => {
+      const bh = (v / max) * (h - 4);
+      const isFocus = years[i] === state.focusYear;
+      const isPartial = years[i] === 2026;
+      const fill = isFocus ? "#0f172a" : isPartial ? "#fdba74" : "#ea580c";
+      return `<rect x="${(i * bw + 0.5).toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${(bw - 1).toFixed(1)}" height="${bh.toFixed(1)}" fill="${fill}"><title>${years[i]}: ${fmtNum(v)}</title></rect>`;
+    })
+    .join("");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="Total anual de la celda">${bars}</svg>`;
+}
+
+function openCellPopup(cell, latlng) {
+  if (isDrawing || !map) return;
+
+  const years = [];
+  for (let y = 2003; y <= 2026; y++) years.push(y);
+  const totals = years.map(() => 0);
+  for (const r of cell.records) totals[r.year - 2003] += r.harm;
+
+  const full = totals.slice(0, totals.length - 1); // 2003–2025 (años completos)
+  const peakIdx = full.indexOf(Math.max(...full));
+  const avg = full.reduce((a, b) => a + b, 0) / full.length;
+
+  const div = document.createElement("div");
+  div.className = "cell-popup";
+  div.innerHTML = `
+    <div class="cp-title">Celda ${cell.cellId}</div>
+    <div class="cp-sub">${SUBREGION_NAMES[cell.subregion] || ""} · ${cell.lat.toFixed(2)}°, ${cell.lon.toFixed(2)}°</div>
+    ${buildSparklineSvg(totals, years)}
+    <div class="cp-axis"><span>2003</span><span>2026*</span></div>
+    <div class="cp-stats">
+      <div><span>Promedio anual</span><b>${fmtNum(avg)}</b></div>
+      <div><span>Peor año</span><b>${years[peakIdx]} (${fmtNum(full[peakIdx])})</b></div>
+    </div>
+    <div class="cp-note">celdas-día eq. Aqua · *2026 parcial (ene–oct)</div>
+    <button type="button" class="btn-action primary cp-btn">Analizar esta celda</button>`;
+
+  div.querySelector(".cp-btn").addEventListener("click", () => {
+    map.closePopup();
+    selectSingleCell(cell);
+  });
+
+  L.popup({ maxWidth: 260 }).setLatLng(latlng).setContent(div).openOn(map);
+}
+
+function selectSingleCell(cell) {
+  const half = state.meta.cell_size_deg / 2.0;
+  // Margen pequeño para que solo el centro de esta celda quede dentro
+  applyCustomBbox(cell.lon - half + 0.01, cell.lat - half + 0.01, cell.lon + half - 0.01, cell.lat + half - 0.01);
+}
+
+/** Usa un rectángulo (lon/lat mínimos y máximos) como área de interés personalizada. */
+function applyCustomBbox(minLon, minLat, maxLon, maxLat) {
+  const layer = L.rectangle([[minLat, minLon], [maxLat, maxLon]], {
+    color: "#0891b2",
+    weight: 2,
+    fillOpacity: 0.08
+  });
+  if (drawnItems) {
+    drawnItems.clearLayers();
+    drawnItems.addLayer(layer);
+  }
+  state.customPolygon = layer.toGeoJSON();
+  state.preset = "custom";
+  const sel = document.getElementById("presetRegion");
+  if (sel) sel.value = "custom";
+  if (map) map.fitBounds(layer.getBounds(), { maxZoom: 8, padding: [30, 30] });
+  recomputeAoiSelection();
 }
 
 /* =========================================================================
@@ -465,6 +685,7 @@ function setFocus(year, month) {
   if (ySel) ySel.value = String(year);
   syncFocusMonthOptions();
   updateAllViews();
+  if (state.mapMode === "month") renderMapGrid();
 }
 
 /* =========================================================================
@@ -1290,8 +1511,7 @@ function bindEvents() {
         state.focusMonth = 10;
         document.getElementById("focusMonth").value = "10";
       }
-      syncFocusMonthOptions();
-      updateAllViews();
+      setFocus(state.focusYear, state.focusMonth);
     });
   }
 
@@ -1303,8 +1523,7 @@ function bindEvents() {
         state.focusYear = 2025;
         document.getElementById("focusYear").value = "2025";
       }
-      syncFocusMonthOptions();
-      updateAllViews();
+      setFocus(state.focusYear, state.focusMonth);
     });
   }
 
@@ -1313,6 +1532,18 @@ function bindEvents() {
   const dlSeriesBtn = document.getElementById("btnDownloadSeries");
   if (dlSeriesBtn) {
     dlSeriesBtn.addEventListener("click", downloadAoiSeriesCsv);
+  }
+
+  document.querySelectorAll(".map-mode-btn").forEach((btn) => {
+    btn.addEventListener("click", () => setMapMode(btn.dataset.mode));
+  });
+
+  const playBtn = document.getElementById("btnPlay");
+  if (playBtn) {
+    playBtn.addEventListener("click", () => {
+      if (state.animTimer) stopAnimation();
+      else startAnimation();
+    });
   }
 
   document.querySelectorAll(".tab-btn").forEach((btn) => {
