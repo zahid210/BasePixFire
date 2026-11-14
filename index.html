@@ -145,7 +145,15 @@
         </div>
 
         <div class="pane-footer-note">
-          <span>Selecciona un preset arriba, usa el lápiz (esquina superior derecha del mapa) para recortar un polígono o haz clic en una celda para ver su historia.</span>
+          <form id="coordForm" class="coord-form" aria-label="Área por coordenadas">
+            <span class="map-toolbar-label">ÁREA POR COORDENADAS</span>
+            <label>Lat <input type="number" id="latMin" step="0.25" min="-90" max="90" placeholder="mín" value="-18.5" /></label>
+            <input type="number" id="latMax" step="0.25" min="-90" max="90" placeholder="máx" value="-16" aria-label="Latitud máxima" />
+            <label>Lon <input type="number" id="lonMin" step="0.25" min="-180" max="180" placeholder="mín" value="-63" /></label>
+            <input type="number" id="lonMax" step="0.25" min="-180" max="180" placeholder="máx" value="-60" aria-label="Longitud máxima" />
+            <button type="submit" class="btn-action">Aplicar</button>
+          </form>
+          <span>También puedes usar un preset arriba, dibujar con el lápiz del mapa o hacer clic en una celda para ver su historia.</span>
         </div>
       </section>
 
@@ -210,6 +218,7 @@
               <button type="button" role="tab" class="tab-btn active" data-view="calendar" aria-selected="true">Calendario</button>
               <button type="button" role="tab" class="tab-btn" data-view="series" aria-selected="false">Serie temporal</button>
               <button type="button" role="tab" class="tab-btn" data-view="seasonal" aria-selected="false">Ciclo estacional</button>
+              <button type="button" role="tab" class="tab-btn" data-view="ranking" aria-selected="false">Ranking</button>
             </div>
           </div>
 
@@ -217,6 +226,7 @@
             <div id="chartCalendar" class="chart-canvas view-panel" data-view="calendar" role="img" aria-label="Matriz de calor de quema Año por Mes"></div>
             <div id="chartSeries" class="chart-canvas view-panel hidden" data-view="series" role="img" aria-label="Serie mensual: MODIS Aqua, VIIRS S-NPP crudo y armonizado"></div>
             <div id="chartSeasonal" class="chart-canvas view-panel hidden" data-view="seasonal" role="img" aria-label="Ciclo estacional del año evaluado frente a la mediana histórica"></div>
+            <div id="rankingView" class="chart-canvas view-panel ranking-panel hidden" data-view="ranking"></div>
             <span id="calendarSummarySR" class="sr-only"></span>
           </div>
         </article>

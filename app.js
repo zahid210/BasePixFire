@@ -37,7 +37,7 @@ const state = {
   focusYear: 2026,
   focusMonth: 10,
   colorRamp: "fire",
-  activeView: "calendar", // calendar | series | seasonal
+  activeView: "calendar", // calendar | series | seasonal | ranking
   mapMode: "period", // period (promedio del rango de años) | month (mes evaluado)
   animTimer: null,
   currentSeriesByYm: new Map(),
@@ -703,6 +703,10 @@ const VIEW_TEXTS = {
   seasonal: {
     eyebrow: "AÑO EVALUADO vs. MEDIANA Y BANDA NORMAL 2003–2025 · CLIC EN UNA BARRA",
     title: () => `Ciclo Estacional ${state.focusYear} vs. Histórico`
+  },
+  ranking: {
+    eyebrow: "ÁREA SELECCIONADA · RANGO DE AÑOS ELEGIDO",
+    title: () => "Ranking de Años y Meses con Más Fuego"
   }
 };
 
@@ -735,6 +739,8 @@ function renderActiveView() {
   } else if (state.activeView === "seasonal") {
     renderSeasonalChart();
     if (chartSeasonal) chartSeasonal.resize();
+  } else if (state.activeView === "ranking") {
+    renderRanking();
   } else {
     renderCalendarChart();
     if (chartCalendar) chartCalendar.resize();
@@ -1213,6 +1219,95 @@ function populateScienceRailFromMeta() {
 }
 
 /* =========================================================================
+ * 5e. Ranking: años y meses con más fuego en el área seleccionada
+ * ========================================================================= */
+function rankRowHtml(rank, label, value, maxVal, extra, dataAttrs) {
+  const pct = maxVal > 0 ? (value / maxVal) * 100 : 0;
+  return `
+    <button type="button" class="rank-row" ${dataAttrs}>
+      <span class="rank-n">${rank}</span>
+      <span class="rank-label">${label}</span>
+      <span class="rank-bar"><i style="width:${pct.toFixed(1)}%"></i></span>
+      <span class="rank-val">${fmtNum(value)}</span>
+      <span class="rank-extra">${extra}</span>
+    </button>`;
+}
+
+function renderRanking() {
+  const el = document.getElementById("rankingView");
+  if (!el) return;
+
+  const hist = computeHistoricalStatsByMonth();
+  const rows = getSeriesRowsInRange();
+
+  // Totales por año (2026 es parcial: solo ene–oct)
+  const byYear = new Map();
+  rows.forEach((r) => {
+    const cur = byYear.get(r.year) || { total: 0, peakMonth: 1, peakVal: -1 };
+    cur.total += r.harm;
+    if (r.harm > cur.peakVal) {
+      cur.peakVal = r.harm;
+      cur.peakMonth = r.month;
+    }
+    byYear.set(r.year, cur);
+  });
+  const allYears = [...byYear.entries()].map(([year, v]) => ({ year, ...v }));
+  const topYears = [...allYears].sort((a, b) => b.total - a.total).slice(0, 5);
+  const fullYears = allYears.filter((y) => y.year <= 2025);
+  const avgYear = fullYears.length ? fullYears.reduce((a, y) => a + y.total, 0) / fullYears.length : 0;
+
+  const topMonths = [...rows].sort((a, b) => b.harm - a.harm).slice(0, 5);
+
+  const yearsHtml = topYears
+    .map((y, i) =>
+      rankRowHtml(
+        i + 1,
+        y.year === 2026 ? "2026*" : String(y.year),
+        y.total,
+        topYears[0].total,
+        avgYear > 0 ? `${(y.total / avgYear).toFixed(1)}× prom.` : "",
+        `data-year="${y.year}" data-month="${y.peakMonth}"`
+      )
+    )
+    .join("");
+
+  const monthsHtml = topMonths
+    .map((r, i) => {
+      const med = hist[r.month].median;
+      return rankRowHtml(
+        i + 1,
+        `${MONTH_NAMES[r.month - 1]} ${r.year}`,
+        r.harm,
+        topMonths[0].harm,
+        med > 0 ? `${(r.harm / med).toFixed(1)}× mediana` : "",
+        `data-year="${r.year}" data-month="${r.month}"`
+      );
+    })
+    .join("");
+
+  el.innerHTML = `
+    <div class="rank-grid">
+      <section>
+        <h4>Años con más fuego (${state.yearStart}–${state.yearEnd})</h4>
+        <p class="rank-help">Total anual de celdas-día · comparado con el promedio anual 2003–2025</p>
+        ${yearsHtml || "<p class='rank-help'>Sin datos</p>"}
+      </section>
+      <section>
+        <h4>Meses con más fuego</h4>
+        <p class="rank-help">Celdas-día del mes · comparado con la mediana de ese mes</p>
+        ${monthsHtml || "<p class='rank-help'>Sin datos</p>"}
+      </section>
+    </div>
+    <p class="rank-help">*2026 solo incluye enero–octubre (datos provisionales). Clic en una fila para evaluar ese mes.</p>`;
+
+  el.querySelectorAll(".rank-row").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setFocus(parseInt(btn.dataset.year, 10), parseInt(btn.dataset.month, 10));
+    });
+  });
+}
+
+/* =========================================================================
  * 6. Calendario Térmico Interactivo con ECharts
  * ========================================================================= */
 function renderCalendarChart() {
@@ -1454,6 +1549,39 @@ function populateYearSelectors() {
   }
 }
 
+/** Lee el formulario de coordenadas, valida y aplica el rectángulo como AOI. */
+function applyCoordForm(e) {
+  e.preventDefault();
+  const read = (id) => parseFloat(document.getElementById(id).value);
+  const latMin = read("latMin");
+  const latMax = read("latMax");
+  const lonMin = read("lonMin");
+  const lonMax = read("lonMax");
+
+  const warnBar = document.getElementById("aoiWarning");
+  const warnTxt = document.getElementById("aoiWarningText");
+  const showError = (msg) => {
+    if (warnBar && warnTxt) {
+      warnTxt.textContent = msg;
+      warnBar.classList.remove("hidden");
+    }
+  };
+
+  if ([latMin, latMax, lonMin, lonMax].some((v) => Number.isNaN(v))) {
+    showError("Completa las cuatro coordenadas (latitud y longitud mínimas y máximas).");
+    return;
+  }
+  if (latMin >= latMax || lonMin >= lonMax) {
+    showError("El mínimo debe ser menor que el máximo en latitud y en longitud.");
+    return;
+  }
+  if (latMin < -90 || latMax > 90 || lonMin < -180 || lonMax > 180) {
+    showError("Coordenadas fuera de rango: latitud entre -90 y 90, longitud entre -180 y 180.");
+    return;
+  }
+  applyCustomBbox(lonMin, latMin, lonMax, latMax);
+}
+
 function bindEvents() {
   const presetSel = document.getElementById("presetRegion");
   if (presetSel) {
@@ -1537,6 +1665,9 @@ function bindEvents() {
   document.querySelectorAll(".map-mode-btn").forEach((btn) => {
     btn.addEventListener("click", () => setMapMode(btn.dataset.mode));
   });
+
+  const coordForm = document.getElementById("coordForm");
+  if (coordForm) coordForm.addEventListener("submit", applyCoordForm);
 
   const playBtn = document.getElementById("btnPlay");
   if (playBtn) {
