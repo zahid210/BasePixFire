@@ -1250,3 +1250,12 @@ select:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Nota de la leyenda del mapa cuando los cortes se ajustan al tamaño del cuadro */
+.legend-note {
+  max-width: 220px;
+  margin-top: 4px;
+  font-size: 9.5px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}

@@ -26,7 +26,6 @@ function zoneName(preset) {
 const state = {
   meta: null,
   cellsMeta: new Map(), // cell_id -> { cellId, row, col, lat, lon, subregion, totalHarm, records: [] }
-  allRecords: [],
   validationRows: [],
   selectedCells: new Set(),
   customPolygon: null,
@@ -40,8 +39,6 @@ const state = {
   mapMode: "period", // period (promedio del rango) | month (mes evaluado) | ml (proyección ML)
   mlYear: 2030, // año de la proyección ML que se pinta en el mapa
   gridRes: "0.25", // tamaño de celda en grados: "0.25" | "0.10" | "0.05"
-  baseMeta: null,
-  baseCells025: null,
   gridCache: new Map(),
   animTimer: null,
   currentSeriesByYm: new Map(),
@@ -108,47 +105,57 @@ function setText(id, text) {
 /* =========================================================================
  * 1. Carga y parseo de datos estáticos (Universal: HTTP o local file://)
  * ========================================================================= */
+/*
+ * Grillas disponibles. Cada una sale del pipeline (scripts/build_dataset.py) con su propia
+ * calibración y validación: 0,25° viene en data_bundle.js (se carga al inicio) y las demás
+ * se cargan solo cuando el usuario las elige.
+ */
+const GRID_BUNDLES = {
+  "0.10": "data/processed/grid_0.10/data_bundle.js",
+  "0.05": "data/processed/grid_0.05/data_bundle.js"
+};
+
+/** Carga un <script> (funciona también abriendo el archivo con file://). */
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement("script");
+    el.src = src;
+    el.onload = resolve;
+    el.onerror = () => reject(new Error(`No se pudo cargar ${src}`));
+    document.head.appendChild(el);
+  });
+}
+
+/** Devuelve { meta, cellsCsv, valCsv } de una grilla ("0.25", "0.10" o "0.05"). */
+async function getGridRaw(res) {
+  if (res === "0.25") {
+    if (window.PIXFIRE_DATA && window.PIXFIRE_DATA.meta && window.PIXFIRE_DATA.cellsCsv) return window.PIXFIRE_DATA;
+    const [metaResp, cellsResp, valResp] = await Promise.all([
+      fetch("data/processed/metadata.json"),
+      fetch("data/processed/monthly_cells.csv"),
+      fetch("data/processed/validation.csv")
+    ]);
+    return { meta: await metaResp.json(), cellsCsv: await cellsResp.text(), valCsv: await valResp.text() };
+  }
+  window.PIXFIRE_GRIDS = window.PIXFIRE_GRIDS || {};
+  if (!window.PIXFIRE_GRIDS[res]) await loadScript(GRID_BUNDLES[res]);
+  return window.PIXFIRE_GRIDS[res];
+}
+
+/** Activa una grilla: sus celdas, su serie de validación y sus metadatos (factores y métricas). */
 async function loadAllData(resKey) {
   if (resKey) state.gridRes = resKey;
-  const r = state.gridRes || "0.25";
-  const cs = parseFloat(r);
-
-  if (!state.baseCells025) {
-    let rawMeta = null;
-    let cellsText = null;
-    let valText = null;
-
-    if (window.PIXFIRE_DATA && window.PIXFIRE_DATA.meta && window.PIXFIRE_DATA.cellsCsv) {
-      rawMeta = window.PIXFIRE_DATA.meta;
-      cellsText = window.PIXFIRE_DATA.cellsCsv;
-      valText = window.PIXFIRE_DATA.valCsv;
-    } else {
-      const [metaResp, cellsResp, valResp] = await Promise.all([
-        fetch("data/processed/metadata.json"),
-        fetch("data/processed/monthly_cells.csv"),
-        fetch("data/processed/validation.csv")
-      ]);
-      rawMeta = await metaResp.json();
-      cellsText = await cellsResp.text();
-      valText = await valResp.text();
-    }
-
-    state.baseMeta = rawMeta;
-    state.baseCells025 = parseBaseCells025(cellsText);
-    parseValidationCsv(valText);
+  const res = state.gridRes || "0.25";
+  if (!state.gridCache.has(res)) {
+    const raw = await getGridRaw(res);
+    const cells = parseCellsCsv(raw.cellsCsv, raw.meta.cell_size_deg);
+    state.gridCache.set(res, { meta: raw.meta, ...cells, validationRows: parseValidationCsv(raw.valCsv) });
   }
-
-  state.meta = {
-    ...state.baseMeta,
-    cell_size_deg: cs
-  };
-
-  if (!state.gridCache.has(r)) {
-    state.gridCache.set(r, buildContinuousGrid(cs));
-  }
-  const cached = state.gridCache.get(r);
-  state.cellsMeta = cached.cellsMeta;
-  state.subregionTotals = cached.subregionTotals;
+  const g = state.gridCache.get(res);
+  state.meta = g.meta;
+  state.cellsMeta = g.cellsMeta;
+  state.subregionTotals = g.subregionTotals;
+  state.validationRows = g.validationRows;
 }
 
 function classifySubregion(lat, lon) {
@@ -157,9 +164,10 @@ function classifySubregion(lat, lon) {
   return "chiquitania_llanos";
 }
 
-function parseBaseCells025(csvText) {
-  const baseMap = new Map();
-  const cellSize = 0.25;
+/** Lee monthly_cells.csv de una grilla: una entrada por celda con sus registros mensuales. */
+function parseCellsCsv(csvText, cellSize) {
+  const cellsMeta = new Map();
+  const subregionTotals = { chiquitania_llanos: 0, amazonia_beni_norte: 0, andina_valles: 0 };
   const lines = csvText.trim().split("\n");
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
@@ -171,186 +179,32 @@ function parseBaseCells025(csvText) {
     const aqua = aStr === "" ? null : parseInt(aStr, 10);
     const snpp = sStr === "" ? null : parseInt(sStr, 10);
 
-    let cellObj = baseMap.get(cellId);
+    let cellObj = cellsMeta.get(cellId);
     if (!cellObj) {
       const [rStr, cStr] = cellId.split("_");
       const row = parseInt(rStr, 10);
       const col = parseInt(cStr, 10);
       const lat = (row + 0.5) * cellSize - 90.0;
       const lon = (col + 0.5) * cellSize - 180.0;
-      const subregion = classifySubregion(lat, lon);
-      cellObj = {
-        cellId,
-        parentCellId: cellId,
-        row,
-        col,
-        lat,
-        lon,
-        subregion,
-        totalHarm: 0,
-        records: [],
-        byYm: new Map(),
-        densityFactor: 1.0,
-        areaWeight: 1.0
-      };
-      baseMap.set(cellId, cellObj);
+      cellObj = { cellId, row, col, lat, lon, subregion: classifySubregion(lat, lon), totalHarm: 0, records: [], byYm: new Map() };
+      cellsMeta.set(cellId, cellObj);
     }
-
-    const rec = { cellId, year, month, harm, aqua, snpp, source };
     cellObj.totalHarm += harm;
-    cellObj.records.push(rec);
+    cellObj.records.push({ cellId, year, month, harm, aqua, snpp, source: source ? source.trim() : "" });
     cellObj.byYm.set(ymKey(year, month), harm);
+    subregionTotals[cellObj.subregion] += harm;
   }
-  return baseMap;
-}
-
-/**
- * Construye una grilla 100% continua sin bloques separados ni filas/columnas vacías
- * para la resolución seleccionada (`0.25°`, `0.10°`, `0.05°`), aplicando interpolación
- * espacial IDW entre celdas vecinas de 0.25° para transiciones suaves.
- */
-function buildContinuousGrid(cs) {
-  const baseMap = state.baseCells025;
-  const subregionTotals = {
-    chiquitania_llanos: 0,
-    amazonia_beni_norte: 0,
-    andina_valles: 0
-  };
-  baseMap.forEach((b) => {
-    subregionTotals[b.subregion] = (subregionTotals[b.subregion] || 0) + b.totalHarm;
-  });
-
-  if (Math.abs(cs - 0.25) < 1e-6) {
-    return { cellsMeta: baseMap, subregionTotals };
-  }
-
-  // Índice espacial rápido por (row_025, col_025)
-  const rcIndex = new Map();
-  baseMap.forEach((b) => {
-    rcIndex.set(`${b.row}_${b.col}`, b);
-  });
-
-  const subCells = new Map();
-  const baseHalf = 0.125;
-
-  // 1. Generar todas las subceldas que intersectan cada celda de 0.25° activa
-  baseMap.forEach((b) => {
-    const latMin = b.lat - baseHalf;
-    const latMax = b.lat + baseHalf;
-    const lonMin = b.lon - baseHalf;
-    const lonMax = b.lon + baseHalf;
-
-    const rMin = Math.floor((latMin + 90.0 + 1e-9) / cs);
-    const rMax = Math.floor((latMax + 90.0 - 1e-9) / cs);
-    const cMin = Math.floor((lonMin + 180.0 + 1e-9) / cs);
-    const cMax = Math.floor((lonMax + 180.0 - 1e-9) / cs);
-
-    const children = [];
-    for (let r = rMin; r <= rMax; r++) {
-      const sLat = +((r + 0.5) * cs - 90.0).toFixed(4);
-      for (let c = cMin; c <= cMax; c++) {
-        const sLon = +((c + 0.5) * cs - 180.0).toFixed(4);
-        const sId = `${r}_${c}`;
-        let sub = subCells.get(sId);
-        if (!sub) {
-          sub = {
-            cellId: sId,
-            parentCellId: b.cellId,
-            baseCell: b,
-            row: r,
-            col: c,
-            lat: sLat,
-            lon: sLon,
-            subregion: classifySubregion(sLat, sLon),
-            totalHarm: b.totalHarm,
-            records: b.records,
-            byYm: b.byYm,
-            densityFactor: 1.0,
-            areaWeight: 1.0,
-            _rawGrad: 1.0
-          };
-          subCells.set(sId, sub);
-          children.push(sub);
-        } else {
-          // Si una subcelda de 0.10° cae en el borde entre dos celdas de 0.25°,
-          // se asocia a la celda padre cuyo centro esté más cerca.
-          const dCurr = Math.hypot(sLat - sub.baseCell.lat, sLon - sub.baseCell.lon);
-          const dNew = Math.hypot(sLat - b.lat, sLon - b.lon);
-          if (dNew < dCurr) {
-            sub.parentCellId = b.cellId;
-            sub.baseCell = b;
-            sub.records = b.records;
-            sub.byYm = b.byYm;
-            sub.totalHarm = b.totalHarm;
-          }
-        }
-      }
-    }
-    b._children = children;
-  });
-
-  // 2. Agrupar hijos finales por celda base y calcular interpolación espacial IDW 3x3
-  baseMap.forEach((b) => {
-    b._children = [];
-  });
-  subCells.forEach((sub) => {
-    sub.baseCell._children.push(sub);
-  });
-
-  baseMap.forEach((b) => {
-    const kids = b._children;
-    if (!kids || !kids.length) return;
-
-    // Recolectar vecindario 3x3 de celdas de 0.25°
-    const neighbors = [];
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        const nb = rcIndex.get(`${b.row + dr}_${b.col + dc}`);
-        if (nb) neighbors.push(nb);
-      }
-    }
-
-    let sumGrad = 0;
-    const baseVal = b.totalHarm + 5.0;
-    for (const sub of kids) {
-      let wSum = 0;
-      let valSum = 0;
-      for (const nb of neighbors) {
-        const dist = Math.hypot(sub.lat - nb.lat, sub.lon - nb.lon);
-        const w = 1.0 / Math.pow(Math.max(0.03, dist), 1.6);
-        wSum += w;
-        valSum += w * (nb.totalHarm + 5.0);
-      }
-      const interp = wSum > 0 ? valSum / wSum : baseVal;
-      // Mezcla suave entre el valor de la celda padre y el gradiente vecino
-      const rawFactor = Math.max(0.35, Math.min(1.85, 0.55 + 0.45 * (interp / baseVal)));
-      sub._rawGrad = rawFactor;
-      sumGrad += rawFactor;
-    }
-
-    const nKids = kids.length;
-    const meanGrad = sumGrad / nKids;
-    for (const sub of kids) {
-      // densityFactor tiene promedio 1.0 dentro de la celda padre (mantiene la escala visual de colores)
-      sub.densityFactor = meanGrad > 0 ? sub._rawGrad / meanGrad : 1.0;
-      // areaWeight suma 1.0 dentro de la celda padre (conserva el conteo total de focos al agregar)
-      sub.areaWeight = sumGrad > 0 ? sub._rawGrad / sumGrad : 1.0 / nKids;
-      sub.totalHarm = b.totalHarm * sub.areaWeight;
-    }
-    delete b._children;
-  });
-
-  return { cellsMeta: subCells, subregionTotals };
+  return { cellsMeta, subregionTotals };
 }
 
 function parseValidationCsv(csvText) {
-  state.validationRows = [];
+  const rows = [];
   const lines = csvText.trim().split("\n");
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
     if (!line) continue;
     const [yStr, mStr, harmStr, aStr, sRawStr, sConvStr, split] = line.split(",");
-    state.validationRows.push({
+    rows.push({
       year: parseInt(yStr, 10),
       month: parseInt(mStr, 10),
       harmonized: parseFloat(harmStr),
@@ -360,6 +214,7 @@ function parseValidationCsv(csvText) {
       split: split ? split.trim() : ""
     });
   }
+  return rows;
 }
 
 /* =========================================================================
@@ -521,36 +376,50 @@ const MAP_SCALES = {
   }
 };
 
+/**
+ * Umbrales del modo "Lo habitual" escalados por el área del cuadro: un cuadro de 0,05° tiene
+ * 25 veces menos área que uno de 0,25°, así que tiene muchos menos días con fuego al año.
+ * Los colores salen de los mismos datos; solo cambian los cortes de la leyenda.
+ */
+function scaleFactor(mode) {
+  if (mode !== "period" || !state.meta) return 1;
+  return Math.pow(state.meta.cell_size_deg / 0.25, 2);
+}
+
+/** Corte redondeado a 2 cifras significativas (25 → 25; 25 × 0,04 = 1; 2 × 0,16 = 0,32). */
+function scaledMin(c, mode) {
+  if (!Number.isFinite(c.min) || c.min === 0) return c.min;
+  return Number((c.min * scaleFactor(mode)).toPrecision(2));
+}
+
 function getScaleColor(mode, value) {
   const classes = MAP_SCALES[mode].classes;
-  const found = classes.find((c) => value > c.min);
+  const found = classes.find((c) => value > scaledMin(c, mode));
   return found ? found.color : classes[classes.length - 1].color;
 }
 
 /** Valor de una celda según el modo del mapa (promedio del periodo, mes elegido o pronóstico). */
 function getCellMapValue(cell) {
-  const df = cell.densityFactor !== undefined ? cell.densityFactor : 1.0;
-  if (state.mapMode === "ml") return getMlCellAnnual(cell.cellId);
+  if (state.mapMode === "ml") return getMlCellAnnual(cell);
   if (state.mapMode === "month") {
-    return (cell.byYm.get(ymKey(state.focusYear, state.focusMonth)) || 0) * df;
+    return cell.byYm.get(ymKey(state.focusYear, state.focusMonth)) || 0;
   }
-  const base = cell.baseCell || cell;
-  if (base._periodRangeKey === state._periodRangeKey && base._periodAvg !== undefined) {
-    return base._periodAvg * df;
+  // Promedio anual del rango; se guarda en la celda para no recalcularlo en cada repintado
+  const key = `${state.yearStart}_${state.yearEnd}`;
+  if (cell._periodKey !== key) {
+    let activeMonths = 0;
+    for (let y = state.yearStart; y <= state.yearEnd; y++) {
+      activeMonths += y === 2026 ? 10 : 12;
+    }
+    const numYears = Math.max(0.833, activeMonths / 12.0);
+    let periodHarm = 0;
+    for (const r of cell.records) {
+      if (r.year >= state.yearStart && r.year <= state.yearEnd) periodHarm += r.harm;
+    }
+    cell._periodKey = key;
+    cell._periodAvg = periodHarm / numYears;
   }
-  let activeMonths = 0;
-  for (let y = state.yearStart; y <= state.yearEnd; y++) {
-    activeMonths += y === 2026 ? 10 : 12;
-  }
-  const numYears = Math.max(0.833, activeMonths / 12.0);
-  let periodHarm = 0;
-  for (const r of cell.records) {
-    if (r.year >= state.yearStart && r.year <= state.yearEnd) periodHarm += r.harm;
-  }
-  const avg = periodHarm / numYears;
-  base._periodRangeKey = state._periodRangeKey;
-  base._periodAvg = avg;
-  return avg * df;
+  return cell._periodAvg;
 }
 
 function cellTooltipHtml(cell) {
@@ -572,25 +441,6 @@ function renderMapGrid() {
   const cs = state.meta.cell_size_deg;
   const half = cs / 2.0;
   const mode = state.mapMode;
-
-  state._periodRangeKey = `${state.yearStart}_${state.yearEnd}`;
-  if (mode === "period" && state.baseCells025) {
-    let activeMonths = 0;
-    for (let y = state.yearStart; y <= state.yearEnd; y++) {
-      activeMonths += y === 2026 ? 10 : 12;
-    }
-    const numYears = Math.max(0.833, activeMonths / 12.0);
-    state.baseCells025.forEach((b) => {
-      if (b._periodRangeKey !== state._periodRangeKey) {
-        let periodHarm = 0;
-        for (const r of b.records) {
-          if (r.year >= state.yearStart && r.year <= state.yearEnd) periodHarm += r.harm;
-        }
-        b._periodAvg = periodHarm / numYears;
-        b._periodRangeKey = state._periodRangeKey;
-      }
-    });
-  }
 
   const selWeight = cs < 0.25 ? 0.35 : 0.75;
   const unselWeight = cs < 0.25 ? 0.1 : 0.25;
@@ -637,14 +487,21 @@ function updateMapLegend() {
     `<div class="legend-when">${when}</div>` +
     `<div class="legend-title">${t(scale.title)}</div>` +
     scale.classes
-      .map((c) => `<div class="legend-row"><i style="background:${c.color}"></i>${t(c.label)}</div>`)
-      .join("");
+      .map((c, i) => {
+        // {a} = corte de esta clase, {b} = corte de la clase superior (ya escalados a la grilla)
+        const a = fmtNum(Number.isFinite(c.min) ? scaledMin(c, state.mapMode) : scaledMin(scale.classes[i - 1], state.mapMode), 2);
+        const b = i > 0 ? fmtNum(scaledMin(scale.classes[i - 1], state.mapMode), 2) : "";
+        return `<div class="legend-row"><i style="background:${c.color}"></i>${t(c.label, { a, b })}</div>`;
+      })
+      .join("") +
+    (scaleFactor(state.mapMode) !== 1 ? `<div class="legend-note">${t("scale.perCell", { deg: fmtNum(state.meta.cell_size_deg, 2) })}</div>` : "");
 }
 
 /* -------------------------------------------------------------------------
  * Modo del mapa y animación mes a mes
  * ------------------------------------------------------------------------- */
 function setMapMode(mode) {
+  if (mode === "ml" && !mlMapAvailable()) return; // el pronóstico solo existe en la grilla de 0,25°
   state.mapMode = mode;
   document.querySelectorAll(".map-mode-btn").forEach((b) => {
     const active = b.dataset.mode === mode;
@@ -654,6 +511,15 @@ function setMapMode(mode) {
   if (mode === "period") stopAnimation();
   updateToolbarForMapMode();
   renderMapGrid();
+}
+
+/** El botón "Pronóstico 2030" del mapa solo se puede usar en la grilla de 0,25° (donde se entrenó el modelo). */
+function updateMlMapButton() {
+  const btn = document.querySelector('.map-mode-btn[data-mode="ml"]');
+  if (!btn) return;
+  const ok = mlMapAvailable();
+  btn.disabled = !ok;
+  btn.title = ok ? t("map.mode.ml.title") : t("map.mode.ml.only025");
 }
 
 /** Muestra en la barra superior solo el selector que usa el modo del mapa (años, mes o año proyectado). */
@@ -743,11 +609,10 @@ function buildSparklineSvg(totals, years) {
 function openCellPopup(cell, latlng) {
   if (isDrawing || !map) return;
 
-  const df = cell.densityFactor !== undefined ? cell.densityFactor : 1.0;
   const years = [];
   for (let y = 2003; y <= 2026; y++) years.push(y);
   const totals = years.map(() => 0);
-  for (const r of cell.records) totals[r.year - 2003] += r.harm * df;
+  for (const r of cell.records) totals[r.year - 2003] += r.harm;
 
   const full = totals.slice(0, totals.length - 1); // 2003–2025 (años completos)
   const peakIdx = full.indexOf(Math.max(...full));
@@ -889,14 +754,13 @@ function aggregateSelectedCells() {
   state.selectedCells.forEach((cellId) => {
     const cell = state.cellsMeta.get(cellId);
     if (!cell) return;
-    const w = cell.areaWeight !== undefined ? cell.areaWeight : 1.0;
     for (const r of cell.records) {
       const ym = `${r.year}-${String(r.month).padStart(2, "0")}`;
       const bucket = state.currentSeriesByYm.get(ym);
       if (!bucket) continue;
-      bucket.harm += r.harm * w;
-      if (r.aqua !== null) bucket.aqua = (bucket.aqua || 0) + r.aqua * w;
-      if (r.snpp !== null) bucket.snpp = (bucket.snpp || 0) + r.snpp * w;
+      bucket.harm += r.harm;
+      if (r.aqua !== null) bucket.aqua = (bucket.aqua || 0) + r.aqua;
+      if (r.snpp !== null) bucket.snpp = (bucket.snpp || 0) + r.snpp;
       if (r.source === "snpp_converted_nrt" || r.source === "snpp_nrt") bucket.hasNrt = true;
     }
   });
@@ -1421,13 +1285,12 @@ function getValidationMetrics() {
   state.selectedCells.forEach((cellId) => {
     const cell = state.cellsMeta.get(cellId);
     if (!cell) return;
-    const w = cell.areaWeight !== undefined ? cell.areaWeight : 1.0;
     for (const r of cell.records) {
       if (r.year < 2012 || r.year > 2021) continue;
       if (r.year === 2012 && r.month === 1) continue;
       if (r.year === 2020 && (r.month === 8 || r.month === 9)) continue;
-      const snpp = (r.snpp || 0) * w;
-      sumAqua += (r.aqua || 0) * w;
+      const snpp = r.snpp || 0;
+      sumAqua += r.aqua || 0;
       sumSnppRaw += snpp;
       sumSnppHarm += snpp * getFactor(r.month);
     }
@@ -1557,16 +1420,36 @@ function getMl() {
 }
 
 /** Celdas-día esperadas (media de las simulaciones) en el año elegido para el mapa. */
-function getMlCellAnnual(cellId) {
+function getMlCellAnnual(cell) {
   const ml = getMl();
   if (!ml) return 0;
-  const cell = state.cellsMeta.get(cellId);
-  const baseCid = cell && cell.parentCellId ? cell.parentCellId : cellId;
-  const df = cell && cell.densityFactor !== undefined ? cell.densityFactor : 1.0;
-  const c = ml.cells_projection[baseCid];
+  const c = ml.cells_projection[cell.cellId];
   if (!c) return 0;
   const k = ml.projection_years.indexOf(state.mlYear);
-  return k >= 0 ? c[k] * df : 0;
+  return k >= 0 ? c[k] : 0;
+}
+
+/** El modelo de pronóstico se entrenó en la grilla de 0,25°: su modo de mapa solo existe en esa grilla. */
+function mlMapAvailable() {
+  return Boolean(getMl()) && (state.gridRes || "0.25") === "0.25";
+}
+
+/** Celdas de 0,25° (claves del modelo) que corresponden a la zona elegida, sea cual sea la grilla del mapa. */
+function mlCellsForSelection(ml) {
+  if ((state.gridRes || "0.25") === "0.25") return [...state.selectedCells];
+  const ids = Object.keys(ml.cells_projection);
+  if (state.preset !== "custom" || !state.customPolygon) {
+    return ids.filter((id) => {
+      const [r, c] = id.split("_").map(Number);
+      const lat = (r + 0.5) * 0.25 - 90;
+      const lon = (c + 0.5) * 0.25 - 180;
+      return cellMatchesPreset({ subregion: classifySubregion(lat, lon) }, state.preset);
+    });
+  }
+  return ids.filter((id) => {
+    const [r, c] = id.split("_").map(Number);
+    return turf.booleanPointInPolygon(turf.point([(c + 0.5) * 0.25 - 180, (r + 0.5) * 0.25 - 90]), state.customPolygon);
+  });
 }
 
 /** Si no existe ml_bundle.js, oculta la pestaña y el modo de mapa (la app sigue funcionando). */
@@ -1816,14 +1699,12 @@ function renderMlProjectionChart(ml) {
   // Proyección: bandas exactas para los presets; para polígonos propios solo la media
   const presetKey = state.preset !== "custom" && ml.projection[state.preset] ? state.preset : null;
   const projRows = presetKey ? ml.projection[presetKey] : null;
+  const mlCellIds = mlCellsForSelection(ml);
   const meanByYear = projYears.map((y, k) => {
     let s = 0;
-    state.selectedCells.forEach((cid) => {
-      const cell = state.cellsMeta.get(cid);
-      const baseCid = cell && cell.parentCellId ? cell.parentCellId : cid;
-      const w = cell && cell.areaWeight !== undefined ? cell.areaWeight : 1.0;
-      const c = ml.cells_projection[baseCid];
-      if (c) s += c[k] * w;
+    mlCellIds.forEach((cid) => {
+      const c = ml.cells_projection[cid];
+      if (c) s += c[k];
     });
     return s;
   });
@@ -1994,7 +1875,7 @@ function harmResultCard(title, m, threshold) {
     </div>`;
 }
 
-/** Ojo: la calibración se hizo en la grilla base (state.baseMeta, 0,25°), no en la grilla que se ve en el mapa. */
+/** Cada grilla tiene su propia calibración: los pasos y resultados usan los metadatos de la grilla activa. */
 function buildHarmSteps(meta) {
   const vm = meta.validation_metrics;
   const full = vm.full_2012_2021_in_sample;
@@ -2019,7 +1900,7 @@ function buildHarmSteps(meta) {
       <div class="harm-step">
         <span class="harm-n">3</span>
         <b>${t("harm.s3.t")}</b>
-        <p>${t("harm.s3.d", { deg: fmtNum((state.baseMeta || meta).cell_size_deg, 2) })}</p>
+        <p>${t("harm.s3.d", { deg: fmtNum(meta.cell_size_deg, 2), km: fmtNum(meta.cell_size_deg * 110, 1) })}</p>
       </div>
       <div class="harm-step">
         <span class="harm-n">4</span>
@@ -2393,7 +2274,6 @@ function downloadCellsCsv() {
   state.selectedCells.forEach((cellId) => {
     const cell = state.cellsMeta.get(cellId);
     if (!cell) return;
-    const w = cell.areaWeight !== undefined ? cell.areaWeight : 1.0;
     for (const r of cell.records) {
       if (r.year < state.yearStart || r.year > state.yearEnd) continue;
       rows.push([
@@ -2403,9 +2283,9 @@ function downloadCellsCsv() {
         cell.subregion,
         r.year,
         r.month,
-        +(r.harm * w).toFixed(2),
-        r.aqua !== null ? Math.round(r.aqua * w) : "",
-        r.snpp !== null ? Math.round(r.snpp * w) : "",
+        r.harm,
+        r.aqua !== null ? r.aqua : "",
+        r.snpp !== null ? r.snpp : "",
         r.source
       ]);
     }
@@ -2572,7 +2452,20 @@ function bindEvents() {
         await loadAllData(newRes);
         if (gridLayerGroup) gridLayerGroup.clearLayers();
         cellLayers.clear();
+        const harmEl = document.getElementById("harmView");
+        if (harmEl) delete harmEl.dataset.built; // factores y validación de la nueva grilla
+        if (state.mapMode === "ml" && !mlMapAvailable()) setMapMode("period");
+        updateMlMapButton();
         recomputeAoiSelection();
+      } catch (err) {
+        console.error(err);
+        gridSel.value = state.gridRes;
+        const warnBar = document.getElementById("aoiWarning");
+        const warnTxt = document.getElementById("aoiWarningText");
+        if (warnBar && warnTxt) {
+          warnTxt.textContent = t("grid.loadError");
+          warnBar.classList.remove("hidden");
+        }
       } finally {
         gridSel.disabled = false;
       }
@@ -2693,6 +2586,7 @@ window.onLanguageChange = function onLanguageChange() {
     bindEvents();
     initMlControls();
     updateToolbarForMapMode();
+    updateMlMapButton();
     await loadAllData();
     recomputeAoiSelection();
   } catch (err) {

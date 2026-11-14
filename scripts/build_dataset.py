@@ -9,6 +9,11 @@ ejecuta validación cruzada fuera de muestra y por subregiones, y exporta:
   - data/processed/monthly_cells.csv
   - data/processed/validation.csv
   - data/processed/metadata.json
+  - data/processed/data_bundle.js
+
+Grillas más finas (mismo método, calibrado y validado a esa escala):
+  python scripts/build_dataset.py --cell-size 0.10 --out-dir data/processed/grid_0.10
+  python scripts/build_dataset.py --cell-size 0.05 --out-dir data/processed/grid_0.05
 """
 
 import argparse
@@ -421,8 +426,15 @@ def main() -> None:
     with open(cells_csv_path, "r", encoding="utf-8") as fc, open(val_csv_path, "r", encoding="utf-8") as fv:
         cells_text = fc.read()
         val_text = fv.read()
+    # La grilla base (0,25°) se publica como window.PIXFIRE_DATA (la web la carga al inicio).
+    # Las otras grillas se registran en window.PIXFIRE_GRIDS["0.10"], etc.; la web las carga
+    # solo cuando el usuario las elige (ver loadGridBundle en app.js).
+    grid_key = f"{args.cell_size:.2f}"
+    target = "window.PIXFIRE_DATA" if grid_key == "0.25" else f'window.PIXFIRE_GRIDS["{grid_key}"]'
     with open(bundle_path, "w", encoding="utf-8") as fb:
-        fb.write("window.PIXFIRE_DATA = {\n")
+        if grid_key != "0.25":
+            fb.write("window.PIXFIRE_GRIDS = window.PIXFIRE_GRIDS || {};\n")
+        fb.write(f"{target} = {{\n")
         fb.write(f"  meta: {json.dumps(meta, ensure_ascii=False)},\n")
         fb.write(f"  cellsCsv: {json.dumps(cells_text, ensure_ascii=False)},\n")
         fb.write(f"  valCsv: {json.dumps(val_text, ensure_ascii=False)}\n")
