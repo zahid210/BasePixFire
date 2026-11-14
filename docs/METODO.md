@@ -97,19 +97,21 @@ Para no caer en una validación circular (calibrar y evaluar con los mismos dato
 
 ---
 
-## 5. Modelo de Machine Learning: ¿persistencia o acumulación de combustible?
+## 5. Modelo de Machine Learning: persistencia, acumulación y proyección hasta 2030
 
-Script: `scripts/ml_model.py` → `data/processed/ml_results.json` y `data/processed/ml_bundle.js` (pestaña **Modelo ML** y modo de mapa **Riesgo ML 2026** en la web). La web no entrena nada: solo lee los resultados.
+Script: `scripts/ml_model.py` → `data/processed/ml_results.json` y `data/processed/ml_bundle.js` (pestaña **Pronóstico (técnico)** y modo de mapa **Pronóstico 2030** en la web). La web no entrena nada: solo lee los resultados.
 
 ### 5.1 Pregunta
 1. ¿La historia reciente de una celda predice su fuego mejor que su "normal" histórico (climatología)?
 2. Dos hipótesis opuestas:
    - **Persistencia:** donde hubo fuego el año pasado vuelve a haber (p. ej., quema agrícola o chaqueo repetida en las mismas parcelas).
    - **Acumulación:** tras muchos años sin fuego se acumula combustible y el fuego, cuando llega, es mayor.
+3. ¿Qué rango de actividad de fuego es plausible entre 2026 y 2030 si las condiciones se parecen a las de 2003–2025?
 
 ### 5.2 Por qué no una distribución normal
 La variable es un **conteo** (celdas-día con fuego por celda y mes): no es negativa, la mayoría de valores son 0 (≈80 % en entrenamiento) y la varianza es varias veces la media (**sobredispersión**). Por eso se usan modelos de conteo:
-- **Binomial negativa** (GLM): conteos sobredispersos. Es el modelo de pronóstico explicable.
+- **Tweedie** (GLM, enlace log): la varianza crece como una **potencia** de la media, Var = φ·μ^p, con 1 < p < 2. Admite una masa de ceros más valores positivos continuos (sirve también para los decimales de VIIRS convertido). **p se estima de los datos:** se agrupan las celdas-mes en 20 grupos según su media esperada y se ajusta la recta log(varianza) = log(φ) + p·log(media). Es el modelo usado para proyectar.
+- **Binomial negativa** (GLM): alternativa clásica para conteos sobredispersos.
 - **Hurdle en dos partes** (para explicar): (a) **ocurrencia**, ¿hay fuego? (regresión logística); (b) **intensidad**, si hay fuego, ¿cuántas celdas-día? (binomial negativa sobre los meses con fuego). Esto separa las dos hipótesis: la persistencia actúa sobre la ocurrencia y la acumulación sobre la intensidad.
 - **Gradient boosting con pérdida Poisson** (scikit-learn): capta relaciones no lineales. Solo se usa para comparar capacidad predictiva.
 
@@ -129,6 +131,17 @@ La variable es un **conteo** (celdas-día con fuego por celda y mes): no es nega
 - **Línea base a superar:** la climatología de la celda (lo que ya muestra la app).
 - Métricas: deviance de Poisson (error adecuado para conteos), AUC (¿distingue celdas-mes con y sin fuego?), error absoluto medio del total mensual de Bolivia y sesgo total.
 - Prueba provisional: pronóstico de 2026 (ene–oct) con el modelo reentrenado en 2009–2021.
+- **Prueba retrospectiva de la proyección multianual:** con el modelo entrenado en 2009–2016 se simula 2017–2021 completo, sin ver esos años, y se compara el total anual de Bolivia con las bandas simuladas y con la climatología (promedio anual 2003–2016).
+
+### 5.4 b Proyección 2026–2030 (Monte Carlo)
+El modelo solo sabe pronosticar **un año adelante**, porque necesita la historia del año anterior. Para llegar a 2030 se encadena:
+1. Se completan nov–dic de 2026 por simulación (ene–oct son observados).
+2. Se simula 2027 celda por celda y mes por mes con la distribución Tweedie. Ese 2027 simulado se usa como "historia" para calcular las variables de 2028, y así hasta 2030.
+3. Se repite 200 veces. Cada repetición incluye tres fuentes de incertidumbre:
+   - el **azar del fuego** en cada celda (muestreo Tweedie, como Poisson compuesta con tamaños Gamma);
+   - la **incertidumbre de los coeficientes** (se sortean de su distribución normal estimada);
+   - un **"efecto año"** común a todo el país, que representa años secos o húmedos que el modelo no conoce. Su tamaño se estima con la variabilidad del total anual en 2009–2021.
+4. Se reportan la mediana y las bandas del 80 % (P10–P90) y del 90 % (P05–P95) para Bolivia y para cada subregión. En polígonos dibujados por el usuario solo se muestra la media, porque las bandas requieren las simulaciones conjuntas.
 
 Los resultados numéricos están en `data/processed/ml_results.json` y en la pestaña **Modelo ML**. Se recalculan al correr el script y no se copian a mano en este documento.
 
@@ -136,6 +149,8 @@ Los resultados numéricos están en `data/processed/ml_results.json` y en la pes
 - **Persistencia:** confirmada para la ocurrencia. Comparadas con una celda que ardió el año pasado, las *odds* de fuego caen de forma monótona con los años sin fuego, aun controlando por la climatología de la celda.
 - **Acumulación:** hay evidencia en la intensidad. Cuando el fuego vuelve tras 6+ años, la celda acumula más celdas-día que una que ardió el año pasado. La relación no es perfectamente monótona (el grupo de 3 años sale más alto que el de 4–5 años), así que conviene leerla como tendencia, no como curva exacta.
 - **Predicción:** los modelos mejoran la deviance frente a la climatología celda a celda, pero **no mejoran el total mensual de Bolivia**. El valor del modelo está en **dónde** es más probable el fuego, no en cuánto fuego habrá en total.
+- **Tweedie:** el p estimado es cercano a 1 (≈1,1). La varianza es casi proporcional a la media, pero φ ≈ 2,4 veces mayor que en un Poisson. Celda a celda la Tweedie rinde parecido a la binomial negativa en 2017–2021, y es la mejor en el pronóstico provisional de 2026.
+- **Proyección (prueba retrospectiva 2017–2021):** las **bandas son confiables**: 4 de 5 años cayeron dentro de la banda del 80 % y 5 de 5 dentro de la del 90 %. Pero la **mediana subestima**: queda unos 20–25 % por debajo de lo observado y la climatología acierta más en el total anual. La proyección se debe leer como **rango plausible**, no como cifra exacta. Una causa probable es que 2017–2021 tuvo más fuego que el periodo de entrenamiento (2009–2016), y el modelo no tiene información de clima para anticiparlo.
 
 ### 5.6 Limitaciones (importante decirlas ante el jurado)
 1. **Celdas-día ≠ tamaño del incendio.** Miden duración y extensión dentro de la celda de 0,25°, no el área quemada. Para "incendio mayor" en sentido estricto haría falta área quemada (p. ej., MCD64A1), que no está entre los recursos oficiales del reto.
@@ -144,10 +159,12 @@ Los resultados numéricos están en `data/processed/ml_results.json` y en la pes
 4. **Universo de celdas:** solo las 1570 celdas con al menos una detección en todo el registro; las celdas que nunca ardieron no entran.
 5. **2026 es provisional:** las variables 2022–2025 vienen de VIIRS armonizado. El factor k_m corrige totales, no la presencia por celda (VIIRS ve fuegos pequeños que Aqua no). Además, 2026 fue un año de poco fuego frente a su historia y todos los modelos lo sobreestiman.
 6. **Sin clima:** no se usan lluvia, sequía ni ENSO (fuera de los recursos oficiales). Es la mejora más clara para una versión futura.
+7. **La proyección 2027–2030 supone estacionariedad:** que el clima, el uso del suelo y las políticas se comporten como en el periodo histórico. No anticipa sequías extremas, cambios de ley ni nuevas fronteras agrícolas. Además, la historia que la alimenta desde 2022 viene de VIIRS armonizado (ver punto 5).
+8. **La incertidumbre crece con el horizonte, pero se satura:** como el modelo depende sobre todo de la climatología de cada celda, las bandas de 2030 no son mucho más anchas que las de 2027. Esto **no** significa que 2030 sea igual de predecible que 2027; significa que el modelo no representa tendencias de largo plazo.
 
 ### 5.7 Cómo reproducir
 ```bash
 python -m pip install -r requirements.txt
-python scripts/ml_model.py --sample-cells 150 --out-dir /tmp   # prueba rápida
-python scripts/ml_model.py                                      # completo (unos minutos)
+python scripts/ml_model.py --sample-cells 150 --n-sims 30 --out-dir /tmp   # prueba rápida (~30 s)
+python scripts/ml_model.py --n-sims 200                                    # completo (~2,5 min)
 ```

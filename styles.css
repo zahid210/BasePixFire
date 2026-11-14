@@ -988,6 +988,18 @@ select:hover {
   min-width: 0;
 }
 
+.ml-chart-wide {
+  height: 250px;
+  margin-bottom: 8px;
+}
+
+.ml-proj-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
 .ml-table {
   width: 100%;
   border-collapse: collapse;

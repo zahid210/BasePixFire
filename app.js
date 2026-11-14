@@ -46,7 +46,8 @@ const state = {
   focusMonth: 10,
   compareSensors: false, // muestra las líneas de cada satélite en "Evolución"
   activeView: "calendar", // calendar | series | seasonal | ranking | ml
-  mapMode: "period", // period (promedio del rango) | month (mes evaluado) | ml (riesgo 2026)
+  mapMode: "period", // period (promedio del rango) | month (mes evaluado) | ml (proyección ML)
+  mlYear: 2030, // año de la proyección ML que se pinta en el mapa
   animTimer: null,
   currentSeriesByYm: new Map(),
   subregionTotals: {
@@ -65,7 +66,8 @@ let chartCalendar = null;
 let chartSeries = null;
 let chartSeasonal = null;
 let chartMlEffects = null;
-let chartMlAoi = null;
+let chartMlPower = null;
+let chartMlProjection = null;
 
 /** Factor k_m del mes (con respaldo al factor anual si faltara). */
 function getFactor(month) {
@@ -320,7 +322,7 @@ const MAP_SCALES = {
     ]
   },
   ml: {
-    title: "Días con fuego esperados en 2026",
+    title: "Días con fuego esperados (promedio de las simulaciones)",
     classes: [
       { min: 25, color: "#b91c1c", label: "Muy frecuente · más de 25" },
       { min: 10, color: "#ea580c", label: "Frecuente · 10 a 25" },
@@ -357,7 +359,7 @@ function getCellMapValue(cell) {
 function cellTooltipHtml(cell) {
   const v = getCellMapValue(cell);
   const body = state.mapMode === "ml"
-    ? `Esperado en 2026: <b>${fmtDays(v)}</b> días con fuego`
+    ? `Esperado en ${state.mlYear}: <b>${fmtDays(v)}</b> días con fuego (promedio simulado)`
     : state.mapMode === "month"
     ? `${MONTH_FULL_NAMES[state.focusMonth - 1]} ${state.focusYear}: <b>${fmtDays(v)}</b> días con fuego`
     : `Promedio ${state.yearStart}–${state.yearEnd}: <b>${fmtDays(v)}</b> días con fuego al año`;
@@ -407,7 +409,7 @@ function updateMapLegend() {
   if (!el) return;
   const scale = MAP_SCALES[state.mapMode];
   const when = state.mapMode === "ml"
-    ? "Pronóstico 2026"
+    ? `Proyección ${state.mlYear}`
     : state.mapMode === "month"
     ? `${MONTH_FULL_NAMES[state.focusMonth - 1]} ${state.focusYear}`
     : `Lo habitual, ${state.yearStart}–${state.yearEnd}`;
@@ -746,7 +748,7 @@ const VIEW_TEXTS = {
     help: "Haz clic en una fila para ver ese momento arriba y en el mapa."
   },
   ml: {
-    title: () => "Pronóstico 2026 con un modelo estadístico",
+    title: () => "Proyección hasta 2030 con un modelo estadístico",
     help: "Sección técnica para especialistas: qué tanto se puede anticipar el fuego con la historia de cada lugar."
   }
 };
@@ -1317,48 +1319,62 @@ function renderRanking() {
  * 5e. Modelo de Machine Learning (resultados de scripts/ml_model.py)
  *
  * La web NO entrena nada: solo lee data/processed/ml_bundle.js
- * (window.PIXFIRE_ML) y suma los pronósticos de las celdas del AOI.
+ * (window.PIXFIRE_ML) y suma las proyecciones de las celdas del AOI.
  * ========================================================================= */
 const ML_YS_TERMS = ["ys_2", "ys_3", "ys_4", "ys_6"];
 const ML_YS_LABELS = ["1 año\n(referencia)", "2 años", "3 años", "4–5 años", "6+ años o\nsin registro"];
-const ML_COLORS = { occurrence: "#0f766e", intensity: "#ea580c", obs: "#94a3b8", clim: "#64748b" };
+const ML_COLORS = { occurrence: "#0f766e", intensity: "#ea580c", obs: "#334155", band: "#ea580c", clim: "#64748b" };
 
 function getMl() {
-  return window.PIXFIRE_ML && window.PIXFIRE_ML.cells_forecast ? window.PIXFIRE_ML : null;
+  return window.PIXFIRE_ML && window.PIXFIRE_ML.cells_projection ? window.PIXFIRE_ML : null;
 }
 
-/** Celdas-día esperadas para todo 2026 en una celda (suma de los 12 meses). */
+/** Celdas-día esperadas (media de las simulaciones) en el año elegido para el mapa. */
 function getMlCellAnnual(cellId) {
   const ml = getMl();
-  const c = ml && ml.cells_forecast[cellId];
-  return c ? c.pred.reduce((a, v) => a + v, 0) : 0;
+  const c = ml && ml.cells_projection[cellId];
+  if (!c) return 0;
+  const k = ml.projection_years.indexOf(state.mlYear);
+  return k >= 0 ? c[k] : 0;
 }
 
 /** Si no existe ml_bundle.js, oculta la pestaña y el modo de mapa (la app sigue funcionando). */
 function initMlControls() {
-  if (getMl()) return;
-  document.querySelectorAll('[data-view="ml"], [data-mode="ml"]').forEach((el) => el.classList.add("hidden"));
+  const ml = getMl();
+  if (!ml) {
+    document.querySelectorAll('[data-view="ml"], [data-mode="ml"]').forEach((el) => el.classList.add("hidden"));
+    return;
+  }
+  if (!ml.projection_years.includes(state.mlYear)) state.mlYear = ml.projection_years[ml.projection_years.length - 1];
 }
 
 function mlTerm(part, term) {
   return getMl().effects[part].terms.find((t) => t.term === term);
 }
 
+function mlMetric(rows, key) {
+  return rows.find((r) => r.key === key);
+}
+
 /** Frases de hallazgos calculadas a partir de los resultados (no hay cifras escritas a mano). */
 function buildMlFindings(ml) {
   const d = ml.distribution_check;
+  const tw = ml.tweedie;
   const occ6 = mlTerm("occurrence", "ys_6");
   const int6 = mlTerm("intensity", "ys_6");
-  const [base, nb, hgb] = ml.metrics_test;
-  const best = nb.poisson_deviance <= hgb.poisson_deviance ? nb : hgb;
-  const devGain = ((base.poisson_deviance - best.poisson_deviance) / base.poisson_deviance) * 100;
+  const base = mlMetric(ml.metrics_test, "clim");
+  const twm = mlMetric(ml.metrics_test, "tweedie");
+  const devGain = ((base.poisson_deviance - twm.poisson_deviance) / base.poisson_deviance) * 100;
+  const bt = ml.backtest_projection;
+  const nBt = bt.years.length;
   const sig = (t) => t.ci_low > 1 || t.ci_high < 1;
 
   const items = [];
   items.push(
     `<b>No es una distribución normal.</b> El ${fmtNum(d.share_zeros_train * 100, 0)} % de las celdas-mes vale 0 ` +
-    `y la varianza es ${fmtNum(d.variance_train / d.mean_train, 1)} veces la media (sobredispersión). ` +
-    `Por eso se usan modelos de conteo (binomial negativa, Poisson), no regresión lineal.`
+    `y la varianza es ${fmtNum(d.variance_train / d.mean_train, 1)} veces la media. ` +
+    `Usamos una <b>Tweedie</b>: la varianza crece como una potencia de la media, ` +
+    `Var ≈ ${fmtNum(tw.phi, 2)} · media<sup>${fmtNum(tw.power, 2)}</sup> (p estimado de los datos).`
   );
   items.push(sig(occ6)
     ? `<b>Persistencia:</b> si la celda ardió el año pasado, las probabilidades (odds) de fuego son ` +
@@ -1369,11 +1385,14 @@ function buildMlFindings(ml) {
       `<b>${fmtNum((int6.ratio - 1) * 100, 0)} %</b> más celdas-día que en una celda que ardió el año pasado.`
     : `<b>Acumulación:</b> no se encontró un aumento claro de intensidad tras años sin fuego.`);
   items.push(
-    `<b>Capacidad predictiva:</b> el mejor modelo (${best.model}) reduce la deviance un ${fmtNum(devGain, 0)} % frente a la climatología ` +
-    `en ${ml.test_years[0]}–${ml.test_years[1]}. ` +
-    (best.mae_bolivia_monthly_total >= base.mae_bolivia_monthly_total
-      ? "Pero para el <b>total mensual de Bolivia</b> no mejora a la climatología: su valor está en ubicar <i>dónde</i>, no en cuánto en total."
-      : "También mejora el error del total mensual de Bolivia.")
+    `<b>Celda a celda</b>, la Tweedie reduce la deviance un ${fmtNum(devGain, 0)} % frente a la climatología ` +
+    `(${ml.test_years[0]}–${ml.test_years[1]}). ` +
+    `<b>Proyección multianual (prueba ${bt.years[0].year}–${bt.years[nBt - 1].year} sin ver esos años):</b> ` +
+    `${bt.inside_p10_p90}/${nBt} años cayeron dentro de la banda del 80 %; error de la mediana ${fmtNum(bt.mape_median_pct, 0)} % ` +
+    `vs. ${fmtNum(bt.mape_climatology_pct, 0)} % de la climatología. ` +
+    (bt.mape_median_pct > bt.mape_climatology_pct
+      ? "Para el <b>total anual</b> la climatología acierta más: usa la proyección como <b>rango plausible</b>, no como cifra exacta."
+      : "La proyección mejora a la climatología en el total anual.")
   );
   return items.map((t) => `<li>${t}</li>`).join("");
 }
@@ -1393,10 +1412,14 @@ function buildMlMetricsTable(ml) {
   };
   const block = (title, rows) =>
     `<tr class="ml-sep"><td colspan="5">${title}</td></tr>` + rows.map((m) => row(m, rows)).join("");
+  const bt = ml.backtest_projection.years
+    .map((b) => `<tr><td>${b.year}</td><td>${fmtNum(b.observed, 0)}</td><td>${fmtNum(b.p50, 0)}</td>` +
+      `<td>${fmtNum(b.p10, 0)} – ${fmtNum(b.p90, 0)}</td><td>${fmtNum(b.climatology, 0)}</td></tr>`)
+    .join("");
   return `
     <table class="ml-table">
       <thead><tr>
-        <th>Modelo</th>
+        <th>Modelo (pronóstico a 1 año, celda × mes)</th>
         <th title="Error para conteos; menor es mejor">Deviance ↓</th>
         <th title="Capacidad de distinguir celda-mes con y sin fuego; mayor es mejor">AUC ↑</th>
         <th title="Error absoluto medio del total mensual de Bolivia (celdas-día)">Error total mes ↓</th>
@@ -1406,6 +1429,13 @@ function buildMlMetricsTable(ml) {
         ${block(`Prueba fuera de muestra ${ml.test_years[0]}–${ml.test_years[1]} (MODIS Aqua)`, ml.metrics_test)}
         ${block(`Pronóstico ${ml.forecast_year} ene–oct (provisional, VIIRS armonizado)`, ml.metrics_forecast_2026_provisional)}
       </tbody>
+    </table>
+    <table class="ml-table">
+      <thead><tr>
+        <th>Prueba retrospectiva de la proyección (Bolivia)</th>
+        <th>Observado</th><th>Mediana simulada</th><th>Banda 80 % (P10–P90)</th><th>Climatología</th>
+      </tr></thead>
+      <tbody>${bt}</tbody>
     </table>`;
 }
 
@@ -1483,42 +1513,157 @@ function renderMlEffectsChart(ml) {
   chartMlEffects.resize();
 }
 
-function renderMlAoiChart(ml) {
-  const dom = document.getElementById("chartMlAoi");
+/** Ley de potencia de la varianza: puntos (media, varianza) por grupo y recta Var = phi·media^p. */
+function renderMlPowerChart(ml) {
+  const dom = document.getElementById("chartMlPower");
   if (!dom) return;
-  if (!chartMlAoi) chartMlAoi = echarts.init(dom);
+  if (!chartMlPower) chartMlPower = echarts.init(dom);
+  const tw = ml.tweedie;
+  const pts = tw.mean_var_points.map((d) => [d.mean, d.var]);
+  const xs = pts.map((d) => d[0]);
+  const xMin = Math.min(...xs);
+  const xMax = Math.max(...xs);
+  const line = [];
+  for (let i = 0; i <= 30; i++) {
+    const x = xMin * Math.pow(xMax / xMin, i / 30);
+    line.push([x, tw.phi_from_bins * Math.pow(x, tw.power_raw_slope)]);
+  }
+  const poisson = [[xMin, xMin], [xMax, xMax]];
 
-  const pred = new Array(12).fill(0);
-  const clim = new Array(12).fill(0);
-  const obs = new Array(12).fill(0);
-  state.selectedCells.forEach((cellId) => {
-    const c = ml.cells_forecast[cellId];
-    if (!c) return;
-    for (let m = 0; m < 12; m++) {
-      pred[m] += c.pred[m];
-      clim[m] += c.clim[m];
-      if (c.obs[m] !== null) obs[m] += c.obs[m];
-    }
-  });
-  const lastObs = ml.forecast_observed_through_month;
-  const obsData = obs.map((v, m) => (m < lastObs ? Number(v.toFixed(1)) : null));
-
-  chartMlAoi.setOption({
+  chartMlPower.setOption({
     animation: false,
     textStyle: { fontFamily: "Sora, sans-serif" },
-    title: { text: `Área seleccionada · ${ml.forecast_year} (celdas-día por mes)`, left: 0, top: 0, textStyle: { fontSize: 11, fontWeight: 600 } },
+    title: { text: `Varianza (eje vertical) ∝ media^p  ·  p = ${fmtNum(tw.power, 2)}`, left: 0, top: 0, textStyle: { fontSize: 11, fontWeight: 600 } },
     legend: { top: 18, left: 0, itemWidth: 14, textStyle: { fontSize: 9.5 } },
-    grid: { left: 44, right: 12, top: 52, bottom: 26 },
-    tooltip: { ...TOOLTIP_STYLE, trigger: "axis", valueFormatter: (v) => (v === null || v === undefined ? "sin dato" : fmtNum(v)) },
-    xAxis: { type: "category", data: MONTH_NAMES, axisLabel: { fontSize: 9 } },
-    yAxis: { type: "value", axisLabel: { fontSize: 9 }, splitLine: { lineStyle: { color: "#f1f5f9" } } },
+    grid: { left: 44, right: 12, top: 52, bottom: 38 },
+    tooltip: {
+      ...TOOLTIP_STYLE,
+      trigger: "item",
+      formatter: (p) => `media ${fmtNum(p.value[0], 2)} · varianza ${fmtNum(p.value[1], 2)}`
+    },
+    xAxis: { type: "log", name: "media esperada (celdas-día)", nameLocation: "middle", nameGap: 22, nameTextStyle: { fontSize: 9 }, axisLabel: { fontSize: 9 }, splitLine: { show: false } },
+    yAxis: { type: "log", axisLabel: { fontSize: 9 }, splitLine: { lineStyle: { color: "#f1f5f9" } } },
     series: [
-      { name: "Observado (VIIRS armonizado)", type: "bar", color: ML_COLORS.obs, barWidth: "55%", data: obsData },
-      { name: "Modelo ML", type: "line", color: ML_COLORS.intensity, symbolSize: 6, lineStyle: { width: 2 }, data: pred.map((v) => Number(v.toFixed(1))) },
-      { name: "Climatología", type: "line", color: ML_COLORS.clim, symbol: "none", lineStyle: { width: 1.5, type: "dashed" }, data: clim.map((v) => Number(v.toFixed(1))) }
+      { name: "Grupos", type: "scatter", color: ML_COLORS.obs, symbolSize: 7, data: pts },
+      { name: "Ajuste potencia", type: "line", color: ML_COLORS.intensity, symbol: "none", lineStyle: { width: 2 }, data: line },
+      { name: "Poisson (var = media)", type: "line", color: ML_COLORS.clim, symbol: "none", lineStyle: { width: 1.2, type: "dashed" }, data: poisson }
     ]
   }, true);
-  chartMlAoi.resize();
+  chartMlPower.resize();
+}
+
+/** Serie anual del AOI (2003–2025) + proyección 2026–2030 con bandas de incertidumbre. */
+function renderMlProjectionChart(ml) {
+  const dom = document.getElementById("chartMlProjection");
+  if (!dom) return;
+  if (!chartMlProjection) chartMlProjection = echarts.init(dom);
+
+  const projYears = ml.projection_years;
+  const firstProj = projYears[0];
+  const years = [];
+  for (let y = 2003; y <= projYears[projYears.length - 1]; y++) years.push(y);
+
+  // Historia: suma anual del AOI con los mismos datos que el resto de la app
+  const histByYear = new Map();
+  state.currentSeriesByYm.forEach((b) => {
+    if (b.year < firstProj) histByYear.set(b.year, (histByYear.get(b.year) || 0) + b.harm);
+  });
+
+  // Proyección: bandas exactas para los presets; para polígonos propios solo la media
+  const presetKey = state.preset !== "custom" && ml.projection[state.preset] ? state.preset : null;
+  const projRows = presetKey ? ml.projection[presetKey] : null;
+  const meanByYear = projYears.map((y, k) => {
+    let s = 0;
+    state.selectedCells.forEach((cid) => {
+      const c = ml.cells_projection[cid];
+      if (c) s += c[k];
+    });
+    return s;
+  });
+
+  const histVals = [...histByYear.values()];
+  const histAvg = histVals.length ? histVals.reduce((x, v) => x + v, 0) / histVals.length : 0;
+  const idx = (y) => years.indexOf(y);
+  const hist = years.map((y) => (histByYear.has(y) ? Number(histByYear.get(y).toFixed(1)) : null));
+  // Une la línea de historia con la proyección
+  const lastHist = firstProj - 1;
+  const central = years.map((y) => {
+    if (y === lastHist) return hist[idx(y)];
+    const k = projYears.indexOf(y);
+    if (k < 0) return null;
+    return Number((projRows ? projRows[k].p50 : meanByYear[k]).toFixed(1));
+  });
+  const bandSeries = [];
+  if (projRows) {
+    const lower = (key) => years.map((y) => {
+      const k = projYears.indexOf(y);
+      return k < 0 ? null : projRows[k][key];
+    });
+    const width = (lo, hi) => years.map((y) => {
+      const k = projYears.indexOf(y);
+      return k < 0 ? null : Number((projRows[k][hi] - projRows[k][lo]).toFixed(1));
+    });
+    [["p05", "p95", "Banda 90 %", 0.12, "b90"], ["p10", "p90", "Banda 80 %", 0.22, "b80"]].forEach(([lo, hi, name, op, stack]) => {
+      bandSeries.push({ name: `_${stack}`, type: "line", stack, data: lower(lo), symbol: "none", lineStyle: { opacity: 0 }, tooltip: { show: false } });
+      bandSeries.push({
+        name, type: "line", stack, data: width(lo, hi), symbol: "none", color: ML_COLORS.band,
+        lineStyle: { opacity: 0 }, areaStyle: { color: ML_COLORS.band, opacity: op }, tooltip: { show: false }
+      });
+    });
+  }
+
+  const regionName = { all: "Toda Bolivia", chiquitania: "Chiquitanía y Llanos", amazonia: "Amazonía y Beni", andina: "Andina y Valles" };
+  const title = presetKey ? regionName[presetKey] : "Área dibujada (solo media; bandas solo para regiones predefinidas)";
+
+  chartMlProjection.setOption({
+    animation: false,
+    textStyle: { fontFamily: "Sora, sans-serif" },
+    title: { text: `Proyección hasta ${projYears[projYears.length - 1]} · ${title} (días con fuego al año)`, left: 0, top: 0, textStyle: { fontSize: 11, fontWeight: 600 } },
+    legend: { top: 18, left: 0, itemWidth: 14, textStyle: { fontSize: 9.5 }, data: ["Observado (armonizado)", presetKey ? "Mediana simulada" : "Media simulada", ...(presetKey ? ["Banda 80 %", "Banda 90 %"] : [])] },
+    grid: { left: 48, right: 14, top: 52, bottom: 26 },
+    tooltip: {
+      ...TOOLTIP_STYLE,
+      trigger: "axis",
+      formatter: (ps) => {
+        const y = years[ps[0].dataIndex];
+        const k = projYears.indexOf(y);
+        let html = `<b>${y}</b>`;
+        if (hist[idx(y)] !== null && y < firstProj) html += `<br>Observado: <b>${fmtNum(hist[idx(y)])}</b> celdas-día`;
+        if (k >= 0) {
+          if (projRows) {
+            const r = projRows[k];
+            html += `<br>Mediana: <b>${fmtNum(r.p50)}</b><br>80 %: ${fmtNum(r.p10)} – ${fmtNum(r.p90)}<br>90 %: ${fmtNum(r.p05)} – ${fmtNum(r.p95)}`;
+          } else {
+            html += `<br>Media simulada: <b>${fmtNum(meanByYear[k])}</b>`;
+          }
+          if (y === ml.forecast_year) html += `<br><span style='color:#94a3b8'>${y}: ene–${MONTH_NAMES[ml.forecast_observed_through_month - 1].toLowerCase()} observado + resto simulado</span>`;
+        }
+        return html;
+      }
+    },
+    xAxis: { type: "category", data: years.map(String), axisLabel: { fontSize: 9 } },
+    yAxis: { type: "value", axisLabel: { fontSize: 9 }, splitLine: { lineStyle: { color: "#f1f5f9" } } },
+    series: [
+      ...bandSeries,
+      {
+        name: "Observado (armonizado)", type: "line", color: ML_COLORS.obs, symbolSize: 4, lineStyle: { width: 2 },
+        data: hist.map((v, i) => (years[i] < firstProj ? v : null)),
+        // Referencia: promedio anual 2003–2025 (la "climatología" contra la que se compara el modelo)
+        markLine: {
+          symbol: "none", silent: true,
+          lineStyle: { color: ML_COLORS.clim, type: "dotted", width: 1.2 },
+          label: { formatter: "Promedio 2003–2025", position: "insideStartTop", fontSize: 9, color: ML_COLORS.clim },
+          data: [{ yAxis: Number((histAvg).toFixed(1)) }]
+        }
+      },
+      {
+        name: presetKey ? "Mediana simulada" : "Media simulada", type: "line", color: ML_COLORS.intensity, symbolSize: 5,
+        lineStyle: { width: 2, type: "dashed" }, data: central,
+        markArea: { silent: true, itemStyle: { color: "rgba(148,163,184,0.08)" }, data: [[{ xAxis: String(firstProj) }, { xAxis: String(projYears[projYears.length - 1]) }]] }
+      }
+    ]
+  }, true);
+  chartMlProjection.resize();
 }
 
 function renderMlPanel() {
@@ -1532,26 +1677,43 @@ function renderMlPanel() {
 
   // El esqueleto se crea una sola vez; luego solo se actualizan los gráficos (el AOI cambia).
   if (!el.dataset.built) {
+    const yearOpts = ml.projection_years
+      .map((y) => `<option value="${y}"${y === state.mlYear ? " selected" : ""}>${y}</option>`).join("");
     el.innerHTML = `
       <ul class="ml-findings">${buildMlFindings(ml)}</ul>
+      <div class="ml-proj-head">
+        <label class="map-toolbar-label" for="mlYearSelect">AÑO PROYECTADO EN EL MAPA</label>
+        <select id="mlYearSelect">${yearOpts}</select>
+        <button type="button" class="btn-action" id="btnMlMap">Ver en el mapa</button>
+      </div>
+      <div id="chartMlProjection" class="ml-chart ml-chart-wide" role="img" aria-label="Serie anual observada y proyección hasta 2030 con bandas de incertidumbre"></div>
       <div class="ml-charts">
         <div id="chartMlEffects" class="ml-chart" role="img" aria-label="Efecto de los años desde el último fuego sobre la ocurrencia y la intensidad"></div>
-        <div id="chartMlAoi" class="ml-chart" role="img" aria-label="Pronóstico 2026 del modelo frente a lo observado en el área seleccionada"></div>
+        <div id="chartMlPower" class="ml-chart" role="img" aria-label="Relación de potencia entre la media y la varianza del conteo de fuego"></div>
       </div>
       ${buildMlMetricsTable(ml)}
       <p class="rank-help ml-note">
         Unidad: celda de 0,25° × mes. Variables: normal histórico de la celda, fuego el mismo mes del año anterior,
         años desde el último fuego y fuego en celdas vecinas, todas con datos <b>solo hasta el año anterior</b>.
-        Entrenado en ${ml.train_years[0]}–${ml.train_years[1]}, probado en ${ml.test_years[0]}–${ml.test_years[1]}.
-        Las celdas-día miden duración/extensión del fuego, no área quemada. El pronóstico ${ml.forecast_year} usa historia derivada de VIIRS
-        (más sensible) y es provisional. Detalles en docs/METODO.md. Activa <b>“Riesgo ML 2026”</b> en el mapa para ver el pronóstico por celda.
+        La proyección encadena ${ml.n_sims} simulaciones año a año (lo simulado en un año es la historia del siguiente) e incluye
+        el azar del fuego, la incertidumbre de los coeficientes y un “efecto año” común (años secos o húmedos).
+        <b>Supone que el clima y el uso del suelo se comportan como en 2003–2025</b>; no anticipa sequías extremas ni cambios de política.
+        Las celdas-día miden duración/extensión del fuego, no área quemada. Detalles en docs/METODO.md.
       </p>`;
     el.dataset.built = "1";
     chartMlEffects = null;
-    chartMlAoi = null;
+    chartMlPower = null;
+    chartMlProjection = null;
+
+    el.querySelector("#mlYearSelect").addEventListener("change", (e) => {
+      state.mlYear = parseInt(e.target.value, 10);
+      if (state.mapMode === "ml") renderMapGrid();
+    });
+    el.querySelector("#btnMlMap").addEventListener("click", () => setMapMode("ml"));
   }
+  renderMlProjectionChart(ml);
   renderMlEffectsChart(ml);
-  renderMlAoiChart(ml);
+  renderMlPowerChart(ml);
 }
 
 /* =========================================================================
@@ -1982,7 +2144,7 @@ function bindEvents() {
 
 /** Reajusta gráficos y mapa cuando cambia el espacio disponible. */
 function refreshSizes() {
-  [chartCalendar, chartSeries, chartSeasonal, chartMlEffects, chartMlAoi].forEach((c) => {
+  [chartCalendar, chartSeries, chartSeasonal, chartMlEffects, chartMlPower, chartMlProjection].forEach((c) => {
     if (c) c.resize();
   });
   if (map) map.invalidateSize();
