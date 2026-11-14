@@ -34,6 +34,10 @@
     </defs>
   </svg>
 
+  <!--
+    Textos traducibles: data-i18n (texto), data-i18n-html (con etiquetas),
+    data-i18n-title (tooltip) y data-i18n-aria (lector de pantalla). Ver i18n.js.
+  -->
   <div class="atlas-screen">
     <!-- 1. BARRA SUPERIOR: tres preguntas (dónde, cuándo, qué años) y descargas -->
     <header class="atlas-topbar">
@@ -41,26 +45,27 @@
         <span class="brand-mark"></span>
         <div class="brand-text">
           <span class="brand-name">PixFire Bolivia</span>
-          <span class="brand-desc">Fuego visto por satélite · 2003–2026</span>
+          <span class="brand-desc" data-i18n="brand.desc">Fuego visto por satélite · 2003–2026</span>
         </div>
       </div>
 
       <div class="toolbar-unit">
         <div class="tool-cell">
-          <label for="presetRegion">Zona</label>
+          <label for="presetRegion" data-i18n="top.zone">Zona</label>
           <select id="presetRegion">
-            <option value="all" selected>Toda Bolivia</option>
-            <option value="chiquitania">Chiquitanía y Llanos</option>
-            <option value="amazonia">Amazonía y Beni</option>
-            <option value="andina">Andina y Valles</option>
-            <option value="custom" disabled>Zona elegida en el mapa</option>
+            <option value="all" selected data-i18n="zone.all">Toda Bolivia</option>
+            <option value="chiquitania" data-i18n="zone.chiquitania">Chiquitanía y Llanos</option>
+            <option value="amazonia" data-i18n="zone.amazonia">Amazonía y Beni</option>
+            <option value="andina" data-i18n="zone.andina">Andina y Valles</option>
+            <option value="custom" disabled data-i18n="zone.custom">Zona elegida en el mapa</option>
           </select>
         </div>
 
         <div class="tool-cell">
-          <label for="focusMonth">Mes</label>
+          <label for="focusMonth" data-i18n="top.month">Mes</label>
           <div class="inline-fields">
-            <select id="focusMonth" aria-label="Mes">
+            <!-- Los nombres de los meses los escribe app.js según el idioma -->
+            <select id="focusMonth" aria-label="Mes" data-i18n-aria="top.month">
               <option value="1">Enero</option>
               <option value="2">Febrero</option>
               <option value="3">Marzo</option>
@@ -74,41 +79,45 @@
               <option value="11">Noviembre</option>
               <option value="12">Diciembre</option>
             </select>
-            <select id="focusYear" aria-label="Año"></select>
+            <select id="focusYear" aria-label="Año" data-i18n-aria="top.year"></select>
           </div>
         </div>
 
         <div class="tool-cell">
-          <label for="yearStart">Años a mostrar</label>
+          <label for="yearStart" data-i18n="top.years">Años a mostrar</label>
           <div class="inline-fields">
-            <select id="yearStart" aria-label="Desde el año"></select>
-            <span class="sep">a</span>
-            <select id="yearEnd" aria-label="Hasta el año"></select>
+            <select id="yearStart" aria-label="Desde el año" data-i18n-aria="top.fromYear"></select>
+            <span class="sep" data-i18n="top.to">a</span>
+            <select id="yearEnd" aria-label="Hasta el año" data-i18n-aria="top.toYear"></select>
           </div>
         </div>
 
         <div class="tool-actions">
+          <div class="seg-control lang-switch" role="group" aria-label="Idioma" data-i18n-aria="lang.aria">
+            <button type="button" class="lang-btn active" data-lang="es" aria-pressed="true" title="Español">ES</button>
+            <button type="button" class="lang-btn" data-lang="en" aria-pressed="false" title="English">EN</button>
+          </div>
           <details class="menu" id="downloadMenu">
             <summary class="btn-action primary">
               <svg class="i"><use href="#ic-download" /></svg>
-              <span>Descargar</span>
+              <span data-i18n="dl.button">Descargar</span>
             </summary>
             <div class="menu-list">
               <button type="button" id="btnDownloadSeries">
-                <b>Datos de la zona</b>
-                <span>Un valor por mes · archivo CSV (Excel)</span>
+                <b data-i18n="dl.series.t">Datos de la zona</b>
+                <span data-i18n="dl.series.d">Un valor por mes · archivo CSV (Excel)</span>
               </button>
               <button type="button" id="btnDownloadCells">
-                <b>Datos por cuadro del mapa</b>
-                <span>Detalle de cada cuadro y mes · archivo CSV</span>
+                <b data-i18n="dl.cells.t">Datos por cuadro del mapa</b>
+                <span data-i18n="dl.cells.d">Detalle de cada cuadro y mes · archivo CSV</span>
               </button>
               <button type="button" id="btnPng">
-                <b>Imagen del gráfico</b>
-                <span>El gráfico que estás viendo · PNG</span>
+                <b data-i18n="dl.png.t">Imagen del gráfico</b>
+                <span data-i18n="dl.png.d">El gráfico que estás viendo · PNG</span>
               </button>
             </div>
           </details>
-          <button type="button" id="btnResetAoi" class="btn-action icon" title="Volver a toda Bolivia" aria-label="Volver a toda Bolivia">
+          <button type="button" id="btnResetAoi" class="btn-action icon" title="Volver a toda Bolivia" aria-label="Volver a toda Bolivia" data-i18n-title="reset" data-i18n-aria="reset">
             <svg class="i"><use href="#ic-reset" /></svg>
           </button>
         </div>
@@ -122,15 +131,16 @@
 
     <main class="atlas-split">
       <!-- 2. IZQUIERDA: EL MAPA (dónde hay fuego) -->
-      <section class="split-pane pane-space" aria-label="Mapa de Bolivia">
+      <section class="split-pane pane-space" aria-label="Mapa de Bolivia" data-i18n-aria="map.aria">
         <div class="map-toolbar">
-          <span class="map-toolbar-label">El mapa muestra</span>
-          <div class="seg-control" role="group" aria-label="Qué muestra el mapa">
-            <button type="button" class="map-mode-btn active" data-mode="period" aria-pressed="true" title="Promedio de los años elegidos">Lo habitual</button>
-            <button type="button" class="map-mode-btn" data-mode="month" aria-pressed="false" title="Solo el mes elegido arriba">El mes elegido</button>
-            <button type="button" class="map-mode-btn" data-mode="ml" aria-pressed="false" title="Lo que un modelo estadístico espera año a año hasta 2030 (elige el año en la pestaña Pronóstico)">Pronóstico 2030</button>
+          <span class="map-toolbar-label" data-i18n="map.shows">El mapa muestra</span>
+          <div class="seg-control" role="group" aria-label="Qué muestra el mapa" data-i18n-aria="map.shows.aria">
+            <button type="button" class="map-mode-btn active" data-mode="period" aria-pressed="true" title="Promedio de los años elegidos" data-i18n="map.mode.period" data-i18n-title="map.mode.period.title">Lo habitual</button>
+            <button type="button" class="map-mode-btn" data-mode="month" aria-pressed="false" title="Solo el mes elegido arriba" data-i18n="map.mode.month" data-i18n-title="map.mode.month.title">El mes elegido</button>
+            <button type="button" class="map-mode-btn" data-mode="ml" aria-pressed="false" title="Lo que un modelo estadístico espera año a año hasta 2030 (elige el año en la pestaña Pronóstico)" data-i18n="map.mode.ml" data-i18n-title="map.mode.ml.title">Pronóstico 2030</button>
           </div>
-          <button type="button" id="btnPlay" class="btn-action play-btn" title="Recorre los meses uno por uno" aria-label="Animar mes a mes">▶ Animar</button>
+          <!-- El texto de este botón (Animar/Pausa) lo escribe app.js -->
+          <button type="button" id="btnPlay" class="btn-action play-btn" title="Recorre los meses uno por uno" aria-label="Animar mes a mes" data-i18n-title="map.play.title">▶ Animar</button>
         </div>
 
         <div class="map-container">
@@ -138,22 +148,22 @@
         </div>
 
         <div class="pane-footer-note">
-          <span>Haz clic en un cuadro para ver su historia, o dibuja tu propia zona con las herramientas del mapa (arriba a la derecha).</span>
+          <span data-i18n="map.hint">Haz clic en un cuadro para ver su historia, o dibuja tu propia zona con las herramientas del mapa (arriba a la derecha).</span>
           <details id="coordDetails" class="more-options">
-            <summary>Elegir la zona con coordenadas</summary>
-            <form id="coordForm" class="coord-form" aria-label="Zona por coordenadas">
-              <label>Latitud de <input type="number" id="latMin" step="0.25" min="-90" max="90" value="-18.5" /></label>
-              <label>a <input type="number" id="latMax" step="0.25" min="-90" max="90" value="-16" aria-label="Latitud máxima" /></label>
-              <label>Longitud de <input type="number" id="lonMin" step="0.25" min="-180" max="180" value="-63" /></label>
-              <label>a <input type="number" id="lonMax" step="0.25" min="-180" max="180" value="-60" aria-label="Longitud máxima" /></label>
-              <button type="submit" class="btn-action">Aplicar</button>
+            <summary data-i18n="coord.summary">Elegir la zona con coordenadas</summary>
+            <form id="coordForm" class="coord-form" aria-label="Zona por coordenadas" data-i18n-aria="coord.aria">
+              <label><span data-i18n="coord.latFrom">Latitud de</span> <input type="number" id="latMin" step="0.25" min="-90" max="90" value="-18.5" /></label>
+              <label><span data-i18n="coord.to">a</span> <input type="number" id="latMax" step="0.25" min="-90" max="90" value="-16" aria-label="Latitud máxima" data-i18n-aria="coord.latMax" /></label>
+              <label><span data-i18n="coord.lonFrom">Longitud de</span> <input type="number" id="lonMin" step="0.25" min="-180" max="180" value="-63" /></label>
+              <label><span data-i18n="coord.to">a</span> <input type="number" id="lonMax" step="0.25" min="-180" max="180" value="-60" aria-label="Longitud máxima" data-i18n-aria="coord.lonMax" /></label>
+              <button type="submit" class="btn-action" data-i18n="coord.apply">Aplicar</button>
             </form>
           </details>
         </div>
       </section>
 
       <!-- 3. DERECHA: LA RESPUESTA (¿es normal?) Y LOS GRÁFICOS -->
-      <section class="split-pane pane-time" aria-label="Resumen y gráficos">
+      <section class="split-pane pane-time" aria-label="Resumen y gráficos" data-i18n-aria="sum.aria">
         <article class="time-subblock summary">
           <div class="summary-top">
             <h2 id="sumTitle">Octubre 2026 · Toda Bolivia</h2>
@@ -164,8 +174,8 @@
             <div class="big">
               <span class="big-val" id="sumValue">—</span>
               <span class="big-unit">
-                días con fuego
-                <button type="button" id="btnInfoUnit" class="info-btn" aria-expanded="false" aria-controls="infoUnit" title="¿Qué significa?">?</button>
+                <span data-i18n="sum.unit">días con fuego</span>
+                <button type="button" id="btnInfoUnit" class="info-btn" aria-expanded="false" aria-controls="infoUnit" title="¿Qué significa?" data-i18n-title="sum.info.title">?</button>
               </span>
             </div>
 
@@ -175,16 +185,16 @@
                 <div class="track-current-marker"></div>
               </div>
               <div class="track-labels">
-                <span>Menos fuego</span>
-                <span>Lo normal: <b id="sumRange">—</b></span>
-                <span>Más fuego</span>
+                <span data-i18n="sum.less">Menos fuego</span>
+                <span><span data-i18n="sum.normal">Lo normal:</span> <b id="sumRange">—</b></span>
+                <span data-i18n="sum.more">Más fuego</span>
               </div>
             </div>
           </div>
 
           <p id="sumSentence" class="summary-sentence"></p>
 
-          <p id="infoUnit" class="info-pop hidden">
+          <p id="infoUnit" class="info-pop hidden" data-i18n-html="sum.info.html">
             <b>¿Qué es un “día con fuego”?</b> Dividimos Bolivia en cuadros de unos 27 km de lado. Cada cuadro suma 1 por cada día en que
             el satélite vio fuego en él, y aquí se suman todos los cuadros de la zona. Mide cuánto y por cuánto tiempo hubo fuego:
             <b>no es el número de incendios ni la superficie quemada</b>. “Lo normal” es el rango en que cayó la mitad central de
@@ -193,17 +203,17 @@
 
           <button type="button" id="btnTrust" class="trust-link">
             <svg class="i"><use href="#ic-check" /></svg>
-            <span>Datos de dos satélites de la NASA, corregidos para que se puedan comparar · <u>ver cómo</u></span>
+            <span data-i18n-html="sum.trust.html">Datos de dos satélites de la NASA, corregidos para que se puedan comparar · <u>ver cómo</u></span>
           </button>
         </article>
 
         <article class="time-subblock block-calendar">
-          <div class="tab-bar" role="tablist" aria-label="Gráficos">
-            <button type="button" role="tab" class="tab-btn active" data-view="calendar" aria-selected="true">Calendario</button>
-            <button type="button" role="tab" class="tab-btn" data-view="series" aria-selected="false">Evolución</button>
-            <button type="button" role="tab" class="tab-btn" data-view="seasonal" aria-selected="false">¿Es normal?</button>
-            <button type="button" role="tab" class="tab-btn" data-view="ranking" aria-selected="false">Peores años</button>
-            <button type="button" role="tab" class="tab-btn" data-view="ml" aria-selected="false">Pronóstico (técnico)</button>
+          <div class="tab-bar" role="tablist" aria-label="Gráficos" data-i18n-aria="tabs.aria">
+            <button type="button" role="tab" class="tab-btn active" data-view="calendar" aria-selected="true" data-i18n="tab.calendar">Calendario</button>
+            <button type="button" role="tab" class="tab-btn" data-view="series" aria-selected="false" data-i18n="tab.series">Evolución</button>
+            <button type="button" role="tab" class="tab-btn" data-view="seasonal" aria-selected="false" data-i18n="tab.seasonal">¿Es normal?</button>
+            <button type="button" role="tab" class="tab-btn" data-view="ranking" aria-selected="false" data-i18n="tab.ranking">Peores años</button>
+            <button type="button" role="tab" class="tab-btn" data-view="ml" aria-selected="false" data-i18n="tab.ml">Pronóstico (técnico)</button>
           </div>
 
           <div class="view-head">
@@ -212,22 +222,22 @@
             <div id="compareBar" class="compare-bar hidden">
               <label class="check">
                 <input type="checkbox" id="chkCompare" />
-                <span>Mostrar la corrección entre satélites</span>
+                <span data-i18n="cmp.check">Mostrar la corrección entre satélites</span>
               </label>
               <p id="trustNote" class="trust-note hidden"></p>
-              <ul id="seriesLegend" class="series-legend hidden" aria-label="Líneas del gráfico">
-                <li><i style="background:#0f172a"></i>Dato final (corregido)</li>
-                <li><i style="background:#0284c7"></i>Satélite antiguo (MODIS)</li>
-                <li><i style="background:#dc2626"></i>Satélite nuevo sin corregir (VIIRS)</li>
-                <li><i class="dashed" style="color:#0f766e"></i>Satélite nuevo corregido</li>
+              <ul id="seriesLegend" class="series-legend hidden" aria-label="Líneas del gráfico" data-i18n-aria="cmp.legend.aria">
+                <li><i style="background:#0f172a"></i><span data-i18n="series.final">Dato final (corregido)</span></li>
+                <li><i style="background:#0284c7"></i><span data-i18n="series.modis">Satélite antiguo (MODIS)</span></li>
+                <li><i style="background:#dc2626"></i><span data-i18n="series.viirsRaw">Satélite nuevo sin corregir (VIIRS)</span></li>
+                <li><i class="dashed" style="color:#0f766e"></i><span data-i18n="series.viirsCorr">Satélite nuevo corregido</span></li>
               </ul>
             </div>
           </div>
 
           <div class="calendar-chart-wrap">
-            <div id="chartCalendar" class="chart-canvas view-panel" data-view="calendar" role="img" aria-label="Calendario de fuego por año y mes"></div>
-            <div id="chartSeries" class="chart-canvas view-panel hidden" data-view="series" role="img" aria-label="Evolución mensual de los días con fuego"></div>
-            <div id="chartSeasonal" class="chart-canvas view-panel hidden" data-view="seasonal" role="img" aria-label="Meses del año elegido frente a lo normal"></div>
+            <div id="chartCalendar" class="chart-canvas view-panel" data-view="calendar" role="img" aria-label="Calendario de fuego por año y mes" data-i18n-aria="chart.calendar.aria"></div>
+            <div id="chartSeries" class="chart-canvas view-panel hidden" data-view="series" role="img" aria-label="Evolución mensual de los días con fuego" data-i18n-aria="chart.series.aria"></div>
+            <div id="chartSeasonal" class="chart-canvas view-panel hidden" data-view="seasonal" role="img" aria-label="Meses del año elegido frente a lo normal" data-i18n-aria="chart.seasonal.aria"></div>
             <div id="rankingView" class="chart-canvas view-panel ranking-panel hidden" data-view="ranking"></div>
             <div id="mlView" class="chart-canvas view-panel ml-panel hidden" data-view="ml"></div>
             <span id="calendarSummarySR" class="sr-only"></span>
@@ -237,13 +247,13 @@
     </main>
 
     <footer class="atlas-footer">
-      <span>
+      <span data-i18n-html="footer.links">
         Datos: <a href="https://www.earthdata.nasa.gov/data/tools/firms" target="_blank" rel="noopener">NASA FIRMS</a> ·
         <a href="docs/METODO.md" target="_blank" rel="noopener">Método</a> ·
         <a href="REFERENCES.md" target="_blank" rel="noopener">Referencias</a> ·
         <a href="LICENSE" target="_blank" rel="noopener">Licencia Apache 2.0</a>
       </span>
-      <span>NASA Space Apps Challenge 2026 · sin patrocinio oficial de NASA · 2026 es provisional (enero–octubre)</span>
+      <span data-i18n="footer.note">NASA Space Apps Challenge 2026 · sin patrocinio oficial de NASA · 2026 es provisional (enero–octubre)</span>
     </footer>
   </div>
 
@@ -258,6 +268,8 @@
   <!-- Resultados del modelo de Machine Learning (scripts/ml_model.py) -->
   <script src="data/processed/ml_bundle.js"></script>
 
+  <!-- Textos ES/EN (debe cargarse antes de app.js) -->
+  <script src="i18n.js"></script>
   <!-- Lógica y renderizado cliente -->
   <script src="app.js"></script>
 </body>

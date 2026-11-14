@@ -11,26 +11,17 @@
  *   - data/processed/data_bundle.js (fallback autónomo compatible con file:// y http://)
  */
 
-const MONTH_NAMES = [
-  "Ene", "Feb", "Mar", "Abr", "May", "Jun",
-  "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"
-];
-
-const MONTH_FULL_NAMES = [
-  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
-];
+// Textos según el idioma (i18n.js). Se recalculan al cambiar ES/EN en refreshLangConstants().
+let MONTH_NAMES = t("months.short");
+let MONTH_FULL_NAMES = t("months.full");
 
 // Rampa única del calendario: de claro (poco fuego) a oscuro (mucho fuego)
 const CAL_RAMP = ["#fff7ed", "#fed7aa", "#fb923c", "#ea580c", "#b91c1c", "#7c2d12"];
 
-const ZONE_NAMES = {
-  all: "Toda Bolivia",
-  chiquitania: "Chiquitanía y Llanos",
-  amazonia: "Amazonía y Beni",
-  andina: "Andina y Valles",
-  custom: "Zona elegida en el mapa"
-};
+/** Nombre de la zona (all, chiquitania, amazonia, andina, custom) en el idioma actual. */
+function zoneName(preset) {
+  return t(`zone.${preset}`);
+}
 
 const state = {
   meta: null,
@@ -68,6 +59,9 @@ let chartSeasonal = null;
 let chartMlEffects = null;
 let chartMlPower = null;
 let chartMlProjection = null;
+let layersControl = null; // control de capas (se rehace al cambiar de idioma)
+let drawControl = null; // herramientas de dibujo (se rehacen al cambiar de idioma)
+let baseLayers = null;
 
 /** Factor k_m del mes (con respaldo al factor anual si faltara). */
 function getFactor(month) {
@@ -85,7 +79,7 @@ function round1(v) {
 }
 
 function fmtNum(v, digits = 1) {
-  return Number(v).toLocaleString("es-BO", { maximumFractionDigits: digits });
+  return Number(v).toLocaleString(t("locale"), { maximumFractionDigits: digits });
 }
 
 /** "Días con fuego" (celdas-día): sin decimales cuando el número es grande. */
@@ -95,9 +89,9 @@ function fmtDays(v) {
 
 /** Compara un valor con lo habitual de ese mes (rango P25–P75 de 2003–2025). */
 function classifyVsNormal(value, stat) {
-  if (value > stat.p75) return { key: "high", label: "Más alto de lo normal", color: "#fdba74" };
-  if (value < stat.p25) return { key: "low", label: "Más bajo de lo normal", color: "#5eead4" };
-  return { key: "normal", label: "Dentro de lo normal", color: "#cbd5e1" };
+  if (value > stat.p75) return { key: "high", label: t("status.high"), color: "#fdba74" };
+  if (value < stat.p25) return { key: "low", label: t("status.low"), color: "#5eead4" };
+  return { key: "normal", label: t("status.normal"), color: "#cbd5e1" };
 }
 
 function setText(id, text) {
@@ -216,7 +210,8 @@ function initMap() {
   });
 
   lightLayer.addTo(map);
-  L.control.layers({ "Mapa claro": lightLayer, "Satélite": satLayer }, null, { position: "topleft" }).addTo(map);
+  baseLayers = { light: lightLayer, sat: satLayer };
+  buildLayersControl();
 
   gridLayerGroup = L.layerGroup().addTo(map);
 
@@ -230,49 +225,7 @@ function initMap() {
   drawnItems = new L.FeatureGroup().addTo(map);
 
   if (typeof L.Control !== "undefined" && typeof L.Control.Draw !== "undefined") {
-    // Textos de las herramientas de dibujo en español
-    if (L.drawLocal) {
-      const d = L.drawLocal;
-      d.draw.toolbar.buttons.polygon = "Dibujar una zona";
-      d.draw.toolbar.buttons.rectangle = "Dibujar un rectángulo";
-      d.draw.toolbar.actions.text = "Cancelar";
-      d.draw.toolbar.finish.text = "Terminar";
-      d.draw.toolbar.undo.text = "Borrar el último punto";
-      d.draw.handlers.polygon.tooltip.start = "Haz clic para empezar a dibujar";
-      d.draw.handlers.polygon.tooltip.cont = "Haz clic para seguir dibujando";
-      d.draw.handlers.polygon.tooltip.end = "Haz clic en el primer punto para cerrar la zona";
-      d.draw.handlers.rectangle.tooltip.start = "Haz clic y arrastra para marcar la zona";
-      d.draw.handlers.simpleshape.tooltip.end = "Suelta para terminar";
-      d.edit.toolbar.buttons.edit = "Modificar la zona";
-      d.edit.toolbar.buttons.editDisabled = "No hay zona para modificar";
-      d.edit.toolbar.buttons.remove = "Borrar la zona";
-      d.edit.toolbar.buttons.removeDisabled = "No hay zona para borrar";
-      d.edit.toolbar.actions.save.text = "Guardar";
-      d.edit.toolbar.actions.cancel.text = "Cancelar";
-      d.edit.toolbar.actions.clearAll.text = "Borrar todo";
-    }
-
-    const drawControl = new L.Control.Draw({
-      position: "topright",
-      draw: {
-        polygon: {
-          allowIntersection: false,
-          shapeOptions: { color: "#7ff0e8", weight: 2, fillOpacity: 0.16 }
-        },
-        rectangle: {
-          shapeOptions: { color: "#7ff0e8", weight: 2, fillOpacity: 0.16 }
-        },
-        polyline: false,
-        circle: false,
-        marker: false,
-        circlemarker: false
-      },
-      edit: {
-        featureGroup: drawnItems,
-        remove: true
-      }
-    });
-    map.addControl(drawControl);
+    buildDrawControl();
 
     if (typeof L.Draw !== "undefined" && L.Draw.Event) {
       map.on(L.Draw.Event.CREATED, (e) => {
@@ -299,35 +252,91 @@ function initMap() {
   }
 }
 
-/* Escalas de color del mapa, descritas con palabras.
+/** Control de capas (mapa claro / satélite) con los nombres en el idioma actual. */
+function buildLayersControl() {
+  if (!map || !baseLayers) return;
+  if (layersControl) map.removeControl(layersControl);
+  layersControl = L.control
+    .layers({ [t("map.layer.light")]: baseLayers.light, [t("map.layer.sat")]: baseLayers.sat }, null, { position: "topleft" })
+    .addTo(map);
+}
+
+/** Herramientas de dibujo con los textos en el idioma actual (Leaflet.draw lee L.drawLocal al crearlas). */
+function buildDrawControl() {
+  if (!map || typeof L.Control.Draw === "undefined") return;
+  if (L.drawLocal) {
+    const d = L.drawLocal;
+    d.draw.toolbar.buttons.polygon = t("draw.polygon");
+    d.draw.toolbar.buttons.rectangle = t("draw.rectangle");
+    d.draw.toolbar.actions.text = t("draw.cancel");
+    d.draw.toolbar.finish.text = t("draw.finish");
+    d.draw.toolbar.undo.text = t("draw.undo");
+    d.draw.handlers.polygon.tooltip.start = t("draw.poly.start");
+    d.draw.handlers.polygon.tooltip.cont = t("draw.poly.cont");
+    d.draw.handlers.polygon.tooltip.end = t("draw.poly.end");
+    d.draw.handlers.rectangle.tooltip.start = t("draw.rect.start");
+    d.draw.handlers.simpleshape.tooltip.end = t("draw.shape.end");
+    d.edit.toolbar.buttons.edit = t("draw.edit");
+    d.edit.toolbar.buttons.editDisabled = t("draw.editDisabled");
+    d.edit.toolbar.buttons.remove = t("draw.remove");
+    d.edit.toolbar.buttons.removeDisabled = t("draw.removeDisabled");
+    d.edit.toolbar.actions.save.text = t("draw.save");
+    d.edit.toolbar.actions.cancel.text = t("draw.cancel");
+    d.edit.toolbar.actions.clearAll.text = t("draw.clearAll");
+  }
+  if (drawControl) map.removeControl(drawControl);
+  drawControl = new L.Control.Draw({
+    position: "topright",
+    draw: {
+      polygon: {
+        allowIntersection: false,
+        shapeOptions: { color: "#7ff0e8", weight: 2, fillOpacity: 0.16 }
+      },
+      rectangle: {
+        shapeOptions: { color: "#7ff0e8", weight: 2, fillOpacity: 0.16 }
+      },
+      polyline: false,
+      circle: false,
+      marker: false,
+      circlemarker: false
+    },
+    edit: {
+      featureGroup: drawnItems,
+      remove: true
+    }
+  });
+  map.addControl(drawControl);
+}
+
+/* Escalas de color del mapa, descritas con palabras (title/label son claves de i18n.js).
  * "Días con fuego" = celdas-día (ver docs/METODO.md). */
 const MAP_SCALES = {
   period: {
-    title: "Días con fuego al año (promedio)",
+    title: "scale.period.title",
     classes: [
-      { min: 25, color: "#b91c1c", label: "Muy frecuente · más de 25" },
-      { min: 10, color: "#ea580c", label: "Frecuente · 10 a 25" },
-      { min: 2, color: "#fb923c", label: "Ocasional · 2 a 10" },
-      { min: -Infinity, color: "#fed7aa", label: "Raro · menos de 2" }
+      { min: 25, color: "#b91c1c", label: "scale.vhigh" },
+      { min: 10, color: "#ea580c", label: "scale.high" },
+      { min: 2, color: "#fb923c", label: "scale.mid" },
+      { min: -Infinity, color: "#fed7aa", label: "scale.low" }
     ]
   },
   month: {
-    title: "Días con fuego en ese mes",
+    title: "scale.month.title",
     classes: [
-      { min: 15, color: "#7c2d12", label: "Más de 15 días" },
-      { min: 7, color: "#b91c1c", label: "7 a 15 días" },
-      { min: 3, color: "#ea580c", label: "3 a 7 días" },
-      { min: 0, color: "#fdba74", label: "1 a 3 días" },
-      { min: -Infinity, color: "#cbd5e1", label: "Sin fuego" }
+      { min: 15, color: "#7c2d12", label: "scale.m15" },
+      { min: 7, color: "#b91c1c", label: "scale.m7" },
+      { min: 3, color: "#ea580c", label: "scale.m3" },
+      { min: 0, color: "#fdba74", label: "scale.m1" },
+      { min: -Infinity, color: "#cbd5e1", label: "scale.none" }
     ]
   },
   ml: {
-    title: "Días con fuego esperados (promedio de las simulaciones)",
+    title: "scale.ml.title",
     classes: [
-      { min: 25, color: "#b91c1c", label: "Muy frecuente · más de 25" },
-      { min: 10, color: "#ea580c", label: "Frecuente · 10 a 25" },
-      { min: 2, color: "#fb923c", label: "Ocasional · 2 a 10" },
-      { min: -Infinity, color: "#fed7aa", label: "Raro · menos de 2" }
+      { min: 25, color: "#b91c1c", label: "scale.vhigh" },
+      { min: 10, color: "#ea580c", label: "scale.high" },
+      { min: 2, color: "#fb923c", label: "scale.mid" },
+      { min: -Infinity, color: "#fed7aa", label: "scale.low" }
     ]
   }
 };
@@ -359,11 +368,11 @@ function getCellMapValue(cell) {
 function cellTooltipHtml(cell) {
   const v = getCellMapValue(cell);
   const body = state.mapMode === "ml"
-    ? `Esperado en ${state.mlYear}: <b>${fmtDays(v)}</b> días con fuego (promedio simulado)`
+    ? t("tip.ml", { year: state.mlYear, v: fmtDays(v) })
     : state.mapMode === "month"
-    ? `${MONTH_FULL_NAMES[state.focusMonth - 1]} ${state.focusYear}: <b>${fmtDays(v)}</b> días con fuego`
-    : `Promedio ${state.yearStart}–${state.yearEnd}: <b>${fmtDays(v)}</b> días con fuego al año`;
-  return body + "<br><span style='color:#64748b'>Clic para ver la historia de este lugar</span>";
+    ? t("tip.month", { month: MONTH_FULL_NAMES[state.focusMonth - 1], year: state.focusYear, v: fmtDays(v) })
+    : t("tip.period", { from: state.yearStart, to: state.yearEnd, v: fmtDays(v) });
+  return body + `<br><span style='color:#64748b'>${t("tip.click")}</span>`;
 }
 
 /**
@@ -409,15 +418,15 @@ function updateMapLegend() {
   if (!el) return;
   const scale = MAP_SCALES[state.mapMode];
   const when = state.mapMode === "ml"
-    ? `Proyección ${state.mlYear}`
+    ? t("legend.ml", { year: state.mlYear })
     : state.mapMode === "month"
     ? `${MONTH_FULL_NAMES[state.focusMonth - 1]} ${state.focusYear}`
-    : `Lo habitual, ${state.yearStart}–${state.yearEnd}`;
+    : t("legend.period", { from: state.yearStart, to: state.yearEnd });
   el.innerHTML =
     `<div class="legend-when">${when}</div>` +
-    `<div class="legend-title">${scale.title}</div>` +
+    `<div class="legend-title">${t(scale.title)}</div>` +
     scale.classes
-      .map((c) => `<div class="legend-row"><i style="background:${c.color}"></i>${c.label}</div>`)
+      .map((c) => `<div class="legend-row"><i style="background:${c.color}"></i>${t(c.label)}</div>`)
       .join("");
 }
 
@@ -453,16 +462,21 @@ function nextMonth(year, month) {
 function startAnimation() {
   if (state.animTimer) return;
   if (state.mapMode !== "month") setMapMode("month");
-  const btn = document.getElementById("btnPlay");
-  if (btn) {
-    btn.classList.add("playing");
-    btn.textContent = "❚❚ Pausa";
-    btn.setAttribute("aria-label", "Pausar animación");
-  }
   state.animTimer = setInterval(() => {
     const [y, m] = nextMonth(state.focusYear, state.focusMonth);
     setFocus(y, m);
   }, 700);
+  updatePlayButton();
+}
+
+/** Texto del botón Animar/Pausa según el estado y el idioma. */
+function updatePlayButton() {
+  const btn = document.getElementById("btnPlay");
+  if (!btn) return;
+  const playing = Boolean(state.animTimer);
+  btn.classList.toggle("playing", playing);
+  btn.textContent = playing ? t("map.pause") : t("map.play");
+  btn.setAttribute("aria-label", playing ? t("map.pause.aria") : t("map.play.aria"));
 }
 
 function stopAnimation() {
@@ -470,22 +484,12 @@ function stopAnimation() {
     clearInterval(state.animTimer);
     state.animTimer = null;
   }
-  const btn = document.getElementById("btnPlay");
-  if (btn) {
-    btn.classList.remove("playing");
-    btn.textContent = "▶ Animar";
-    btn.setAttribute("aria-label", "Animar mes a mes");
-  }
+  updatePlayButton();
 }
 
 /* -------------------------------------------------------------------------
  * Popup de celda: mini-gráfico de su historia anual y selección como AOI
  * ------------------------------------------------------------------------- */
-const SUBREGION_NAMES = {
-  chiquitania_llanos: "Chiquitanía y Llanos",
-  amazonia_beni_norte: "Amazonía y Beni Norte",
-  andina_valles: "Andina y Valles"
-};
 
 /** Barras SVG simples con el total anual armonizado de la celda (2003–2026). */
 function buildSparklineSvg(totals, years) {
@@ -502,7 +506,7 @@ function buildSparklineSvg(totals, years) {
       return `<rect x="${(i * bw + 0.5).toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${(bw - 1).toFixed(1)}" height="${bh.toFixed(1)}" fill="${fill}"><title>${years[i]}: ${fmtNum(v)}</title></rect>`;
     })
     .join("");
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="Días con fuego por año en este lugar">${bars}</svg>`;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="${t("cp.spark.aria")}">${bars}</svg>`;
 }
 
 function openCellPopup(cell, latlng) {
@@ -520,16 +524,16 @@ function openCellPopup(cell, latlng) {
   const div = document.createElement("div");
   div.className = "cell-popup";
   div.innerHTML = `
-    <div class="cp-title">Historia de este lugar</div>
-    <div class="cp-sub">${SUBREGION_NAMES[cell.subregion] || ""} · cuadro de ~27 km</div>
+    <div class="cp-title">${t("cp.title")}</div>
+    <div class="cp-sub">${t(`sub.${cell.subregion}`)} · ${t("cp.square")}</div>
     ${buildSparklineSvg(totals, years)}
     <div class="cp-axis"><span>2003</span><span>2026*</span></div>
     <div class="cp-stats">
-      <div><span>Promedio al año</span><b>${fmtDays(avg)} días</b></div>
-      <div><span>Peor año</span><b>${years[peakIdx]} (${fmtDays(full[peakIdx])} días)</b></div>
+      <div><span>${t("cp.avg")}</span><b>${t("cp.days", { v: fmtDays(avg) })}</b></div>
+      <div><span>${t("cp.peak")}</span><b>${years[peakIdx]} (${t("cp.days", { v: fmtDays(full[peakIdx]) })})</b></div>
     </div>
-    <div class="cp-note">Días con fuego por año · *2026 solo hasta octubre</div>
-    <button type="button" class="btn-action primary cp-btn">Ver solo este lugar</button>`;
+    <div class="cp-note">${t("cp.note")}</div>
+    <button type="button" class="btn-action primary cp-btn">${t("cp.btn")}</button>`;
 
   div.querySelector(".cp-btn").addEventListener("click", () => {
     map.closePopup();
@@ -605,14 +609,14 @@ function recomputeAoiSelection() {
       polyBbox[2] > bMaxLon + tol ||
       polyBbox[3] > bMaxLat + tol
     ) {
-      warnings.push("Parte de la zona queda fuera de Bolivia: solo se cuenta lo que está dentro del país.");
+      warnings.push(t("warn.outside"));
     }
   }
 
   if (count === 0) {
-    warnings.push("En la zona elegida no hay fuego registrado. Prueba con una zona más grande.");
+    warnings.push(t("warn.empty"));
   } else if (count < 4) {
-    warnings.push("La zona es muy pequeña: los números cambian mucho de un mes a otro y conviene leerlos con cuidado.");
+    warnings.push(t("warn.small"));
   }
 
   if (warnBar && warnTxt) {
@@ -731,26 +735,11 @@ function setFocus(year, month) {
  * 5b. Pestañas de vistas temporales
  * ========================================================================= */
 const VIEW_TEXTS = {
-  calendar: {
-    title: () => "Calendario de fuego",
-    help: "Cada fila es un año y cada columna un mes. Más oscuro = más fuego. Haz clic en un mes para verlo arriba y en el mapa."
-  },
-  series: {
-    title: () => "Evolución mes a mes",
-    help: "La línea sube cuando hay más fuego. Usa la rueda del ratón o la barra de abajo para acercarte."
-  },
-  seasonal: {
-    title: () => `¿Fue normal ${state.focusYear}?`,
-    help: "Barras = ese año. Franja gris = lo normal. Barra naranja: más fuego de lo normal; verde: menos; gris: normal."
-  },
-  ranking: {
-    title: () => "Años y meses con más fuego",
-    help: "Haz clic en una fila para ver ese momento arriba y en el mapa."
-  },
-  ml: {
-    title: () => "Proyección hasta 2030 con un modelo estadístico",
-    help: "Sección técnica para especialistas: qué tanto se puede anticipar el fuego con la historia de cada lugar."
-  }
+  calendar: { title: () => t("view.calendar.title"), help: () => t("view.calendar.help") },
+  series: { title: () => t("view.series.title"), help: () => t("view.series.help") },
+  seasonal: { title: () => t("view.seasonal.title", { year: state.focusYear }), help: () => t("view.seasonal.help") },
+  ranking: { title: () => t("view.ranking.title"), help: () => t("view.ranking.help") },
+  ml: { title: () => t("view.ml.title"), help: () => t("view.ml.help") }
 };
 
 function switchView(view) {
@@ -774,7 +763,7 @@ function renderActiveView() {
   const texts = VIEW_TEXTS[state.activeView];
   if (texts) {
     setText("stageTitle", texts.title());
-    setText("stageHelp", texts.help);
+    setText("stageHelp", texts.help());
   }
   // La opción de comparar satélites solo existe en "Evolución"
   const compareBar = document.getElementById("compareBar");
@@ -869,8 +858,8 @@ function renderSeriesChart() {
     if (a <= b) areas.push([{ name, xAxis: a, itemStyle: { color } }, { xAxis: b }]);
   };
   if (compare) {
-    addArea("Los dos satélites a la vez", "2012-02", "2021-12", "rgba(15, 118, 110, 0.07)");
-    addArea("Solo el satélite nuevo", "2022-01", "2026-10", "rgba(245, 158, 11, 0.10)");
+    addArea(t("series.area.both"), "2012-02", "2021-12", "rgba(15, 118, 110, 0.07)");
+    addArea(t("series.area.new"), "2022-01", "2026-10", "rgba(245, 158, 11, 0.10)");
   }
 
   const focusYm = ymKey(state.focusYear, state.focusMonth);
@@ -886,7 +875,7 @@ function renderSeriesChart() {
 
   const series = [
     {
-      name: compare ? "Dato final (corregido)" : "Días con fuego",
+      name: compare ? t("series.final") : t("series.days"),
       type: "line",
       data: rows.map((r) => round1(r.harm)),
       showSymbol: false,
@@ -906,7 +895,7 @@ function renderSeriesChart() {
   if (compare) {
     series.push(
       {
-        name: "Satélite antiguo (MODIS)",
+        name: t("series.modis"),
         type: "line",
         data: rows.map((r) => (r.aqua === null ? null : r.aqua)),
         showSymbol: false,
@@ -914,7 +903,7 @@ function renderSeriesChart() {
         itemStyle: { color: "#0284c7" }
       },
       {
-        name: "Satélite nuevo sin corregir (VIIRS)",
+        name: t("series.viirsRaw"),
         type: "line",
         data: rows.map((r) => (r.snpp === null ? null : r.snpp)),
         showSymbol: false,
@@ -922,7 +911,7 @@ function renderSeriesChart() {
         itemStyle: { color: "#dc2626" }
       },
       {
-        name: "Satélite nuevo corregido",
+        name: t("series.viirsCorr"),
         type: "line",
         data: rows.map((r) => (r.snpp === null ? null : round1(r.snpp * getFactor(r.month)))),
         showSymbol: false,
@@ -1028,14 +1017,14 @@ function renderSeasonalChart() {
         const status = b ? classifyVsNormal(b.harm, st) : null;
         return `
           <div style="font-weight:700;margin-bottom:3px">${MONTH_FULL_NAMES[m - 1]} ${state.focusYear}</div>
-          <div>${b ? `<b>${fmtDays(b.harm)}</b> días con fuego` : "Todavía sin datos"}</div>
-          <div>Lo normal: entre ${fmtDays(st.p25)} y ${fmtDays(st.p75)}</div>
+          <div>${b ? t("seasonal.days", { v: fmtDays(b.harm) }) : t("seasonal.noData")}</div>
+          <div>${t("seasonal.normal", { a: fmtDays(st.p25), b: fmtDays(st.p75) })}</div>
           ${status ? `<div style="margin-top:3px;color:${status.color}">${status.label}</div>` : ""}`;
       }
     },
     legend: {
       top: 0,
-      data: [yearName, "Mes típico", "Rango normal"],
+      data: [yearName, t("seasonal.typical"), t("seasonal.range")],
       itemWidth: 14,
       itemHeight: 8,
       textStyle: { fontSize: 11, color: "#475569", fontFamily: "Sora" }
@@ -1065,7 +1054,7 @@ function renderSeasonalChart() {
         silent: true
       },
       {
-        name: "Rango normal",
+        name: t("seasonal.range"),
         type: "line",
         stack: "normal",
         data: band,
@@ -1083,7 +1072,7 @@ function renderSeasonalChart() {
         itemStyle: { color: "#94a3b8" }
       },
       {
-        name: "Mes típico",
+        name: t("seasonal.typical"),
         type: "line",
         data: median,
         symbol: "circle",
@@ -1106,10 +1095,10 @@ function updateSummary(histStats) {
   const stat = histStats[state.focusMonth] || { median: 0, mean: 0, p25: 0, p75: 0 };
   const value = current ? current.harm : 0;
   const monthName = MONTH_FULL_NAMES[state.focusMonth - 1];
-  const typical = `un ${monthName.toLowerCase()} típico`;
+  const typical = t("sum.typical", { month: monthName, monthLower: monthName.toLowerCase() });
   const status = classifyVsNormal(value, stat);
 
-  setText("sumTitle", `${monthName} ${state.focusYear} · ${ZONE_NAMES[state.preset] || ""}`);
+  setText("sumTitle", `${monthName} ${state.focusYear} · ${zoneName(state.preset)}`);
   setText("sumValue", fmtDays(value));
   setText("sumRange", `${fmtDays(stat.p25)} – ${fmtDays(stat.p75)}`);
 
@@ -1123,16 +1112,18 @@ function updateSummary(histStats) {
   let sentence;
   if (stat.median > 0) {
     const pct = ((value - stat.median) / stat.median) * 100.0;
-    if (Math.abs(pct) < 1) sentence = `Prácticamente igual que ${typical}.`;
-    else if (pct >= 100) sentence = `${fmtNum(value / stat.median, 1)} veces el fuego de ${typical}.`;
-    else sentence = `Un ${fmtNum(Math.abs(pct), 0)} % ${pct > 0 ? "más" : "menos"} que ${typical}.`;
+    if (Math.abs(pct) < 1) sentence = t("sum.same", { typical });
+    else if (pct >= 100) sentence = t("sum.times", { x: fmtNum(value / stat.median, 1), typical });
+    else sentence = t(pct > 0 ? "sum.more.pct" : "sum.less.pct", { pct: fmtNum(Math.abs(pct), 0), typical });
   } else if (value > 0) {
-    sentence = `En ${typical} casi no hay fuego en esta zona.`;
+    sentence = t("sum.noFireTypical", { typical });
   } else {
-    sentence = `Sin fuego detectado, igual que en ${typical}.`;
+    sentence = t("sum.none", { typical });
   }
-  sentence += ` Lo normal para este mes es entre ${fmtDays(stat.p25)} y ${fmtDays(stat.p75)}.`;
-  if (current && current.hasNrt) sentence += " Dato provisional.";
+  // En inglés la frase empieza con mayúscula aunque "typical" vaya al inicio
+  sentence = sentence.charAt(0).toUpperCase() + sentence.slice(1);
+  sentence += t("sum.range", { a: fmtDays(stat.p25), b: fmtDays(stat.p75) });
+  if (current && current.hasNrt) sentence += t("sum.provisional");
   setText("sumSentence", sentence);
 
   // Marcador de la barra: interpolación por tramos (P25 = 25 %, mediana = 50 %, P75 = 75 %)
@@ -1158,7 +1149,7 @@ function updateSummary(histStats) {
 
   setText(
     "calendarSummarySR",
-    `${monthName} ${state.focusYear}, ${ZONE_NAMES[state.preset] || ""}: ${fmtDays(value)} días con fuego. ${status.label}. ${sentence}`
+    t("sum.sr", { month: monthName, year: state.focusYear, zone: zoneName(state.preset), v: fmtDays(value), status: status.label, sentence })
   );
 }
 
@@ -1177,11 +1168,11 @@ function getValidationMetrics() {
 
   if (state.preset === "all") {
     const m = vm.train_2012_2016_test_2017_2021;
-    return m ? { ...m, scope: "2017–2021 (años que no se usaron para calcular la corrección)" } : null;
+    return m ? { ...m, scope: t("trust.scope.all") } : null;
   }
   if (subMap[state.preset]) {
     const m = vm.subregions_2012_2021 ? vm.subregions_2012_2021[subMap[state.preset]] : null;
-    return m ? { ...m, scope: "2012–2021 en esta región" } : null;
+    return m ? { ...m, scope: t("trust.scope.region") } : null;
   }
 
   // Zona propia: se calcula con las celdas elegidas
@@ -1205,7 +1196,7 @@ function getValidationMetrics() {
   return {
     raw_bias_pct: ((sumSnppRaw - sumAqua) / sumAqua) * 100,
     harmonized_bias_pct: ((sumSnppHarm - sumAqua) / sumAqua) * 100,
-    scope: "2012–2021 en esta zona"
+    scope: t("trust.scope.custom")
   };
 }
 
@@ -1213,19 +1204,15 @@ function getValidationMetrics() {
 function updateTrustNote() {
   const el = document.getElementById("trustNote");
   if (!el) return;
-  const why =
-    "<b>¿Por qué se corrige?</b> El satélite nuevo (VIIRS) ve fuegos más pequeños que el antiguo (MODIS), " +
-    "así que cuenta más aunque haya el mismo fuego. Para poder comparar todos los años, sus datos se ajustan a la escala del antiguo. ";
+  const why = t("trust.why");
   const m = getValidationMetrics();
   if (!m) {
-    el.innerHTML = why + "En esta zona no hay datos suficientes de los años con ambos satélites para comprobar el ajuste.";
+    el.innerHTML = why + t("trust.noData");
     return;
   }
-  const signed = (v, d) => `${v > 0 ? "+" : ""}${fmtNum(v, d)}\u00a0%`;
+  const signed = (v, d) => t("pct", { v: `${v > 0 ? "+" : ""}${fmtNum(v, d)}` });
   el.innerHTML =
-    why +
-    `<b>Comprobación</b> (${m.scope}): sin corregir, el satélite nuevo contaba <b>${signed(m.raw_bias_pct, 0)}</b> ` +
-    `respecto al antiguo; después de corregir, la diferencia es de <b>${signed(m.harmonized_bias_pct, 1)}</b>.`;
+    why + t("trust.check", { scope: m.scope, raw: signed(m.raw_bias_pct, 0), harm: signed(m.harmonized_bias_pct, 1) });
 }
 
 /* =========================================================================
@@ -1275,7 +1262,7 @@ function renderRanking() {
         y.year === 2026 ? "2026*" : String(y.year),
         y.total,
         topYears[0].total,
-        avgYear > 0 ? `${fmtNum(y.total / avgYear, 1)} veces un año promedio` : "",
+        avgYear > 0 ? t("rank.yearTimes", { x: fmtNum(y.total / avgYear, 1) }) : "",
         `data-year="${y.year}" data-month="${y.peakMonth}"`
       )
     )
@@ -1289,7 +1276,7 @@ function renderRanking() {
         `${MONTH_NAMES[r.month - 1]} ${r.year}`,
         r.harm,
         topMonths[0].harm,
-        med > 0 ? `${fmtNum(r.harm / med, 1)} veces lo típico de ese mes` : "",
+        med > 0 ? t("rank.monthTimes", { x: fmtNum(r.harm / med, 1) }) : "",
         `data-year="${r.year}" data-month="${r.month}"`
       );
     })
@@ -1298,15 +1285,15 @@ function renderRanking() {
   el.innerHTML = `
     <div class="rank-grid">
       <section>
-        <h4>Los 5 años con más fuego</h4>
-        ${yearsHtml || "<p class='rank-help'>Sin datos</p>"}
+        <h4>${t("rank.years")}</h4>
+        ${yearsHtml || `<p class='rank-help'>${t("rank.noData")}</p>`}
       </section>
       <section>
-        <h4>Los 5 meses con más fuego</h4>
-        ${monthsHtml || "<p class='rank-help'>Sin datos</p>"}
+        <h4>${t("rank.months")}</h4>
+        ${monthsHtml || `<p class='rank-help'>${t("rank.noData")}</p>`}
       </section>
     </div>
-    <p class="rank-help">Números en días con fuego, entre ${state.yearStart} y ${state.yearEnd}. *2026 solo incluye enero–octubre (provisional).</p>`;
+    <p class="rank-help">${t("rank.note", { from: state.yearStart, to: state.yearEnd })}</p>`;
 
   el.querySelectorAll(".rank-row").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1320,9 +1307,9 @@ function renderRanking() {
  *
  * La web NO entrena nada: solo lee data/processed/ml_bundle.js
  * (window.PIXFIRE_ML) y suma las proyecciones de las celdas del AOI.
+ * Los textos vienen de i18n.js (claves "ml.*").
  * ========================================================================= */
 const ML_YS_TERMS = ["ys_2", "ys_3", "ys_4", "ys_6"];
-const ML_YS_LABELS = ["1 año\n(referencia)", "2 años", "3 años", "4–5 años", "6+ años o\nsin registro"];
 const ML_COLORS = { occurrence: "#0f766e", intensity: "#ea580c", obs: "#334155", band: "#ea580c", clim: "#64748b" };
 
 function getMl() {
@@ -1356,6 +1343,11 @@ function mlMetric(rows, key) {
   return rows.find((r) => r.key === key);
 }
 
+/** Nombre del modelo en el idioma actual (el JSON trae una clave estable). */
+function mlModelName(m) {
+  return t(`ml.model.${m.key}`);
+}
+
 /** Frases de hallazgos calculadas a partir de los resultados (no hay cifras escritas a mano). */
 function buildMlFindings(ml) {
   const d = ml.distribution_check;
@@ -1367,34 +1359,33 @@ function buildMlFindings(ml) {
   const devGain = ((base.poisson_deviance - twm.poisson_deviance) / base.poisson_deviance) * 100;
   const bt = ml.backtest_projection;
   const nBt = bt.years.length;
-  const sig = (t) => t.ci_low > 1 || t.ci_high < 1;
+  const sig = (x) => x.ci_low > 1 || x.ci_high < 1;
 
   const items = [];
-  items.push(
-    `<b>No es una distribución normal.</b> El ${fmtNum(d.share_zeros_train * 100, 0)} % de las celdas-mes vale 0 ` +
-    `y la varianza es ${fmtNum(d.variance_train / d.mean_train, 1)} veces la media. ` +
-    `Usamos una <b>Tweedie</b>: la varianza crece como una potencia de la media, ` +
-    `Var ≈ ${fmtNum(tw.phi, 2)} · media<sup>${fmtNum(tw.power, 2)}</sup> (p estimado de los datos).`
-  );
-  items.push(sig(occ6)
-    ? `<b>Persistencia:</b> si la celda ardió el año pasado, las probabilidades (odds) de fuego son ` +
-      `<b>${fmtNum(1 / occ6.ratio, 1)}×</b> mayores que en una celda con 6+ años sin fuego, aun descontando su normal histórico.`
-    : `<b>Persistencia:</b> el efecto de haber ardido el año pasado no es concluyente (IC 95 % cruza 1).`);
+  items.push(t("ml.f.normal", {
+    zeros: fmtNum(d.share_zeros_train * 100, 0),
+    ratio: fmtNum(d.variance_train / d.mean_train, 1),
+    phi: fmtNum(tw.phi, 2),
+    p: fmtNum(tw.power, 2)
+  }));
+  items.push(sig(occ6) ? t("ml.f.persist", { x: fmtNum(1 / occ6.ratio, 1) }) : t("ml.f.persistNo"));
   items.push(sig(int6) && int6.ratio > 1
-    ? `<b>Acumulación:</b> cuando el fuego vuelve tras 6+ años sin fuego, dura/se extiende ` +
-      `<b>${fmtNum((int6.ratio - 1) * 100, 0)} %</b> más celdas-día que en una celda que ardió el año pasado.`
-    : `<b>Acumulación:</b> no se encontró un aumento claro de intensidad tras años sin fuego.`);
+    ? t("ml.f.accum", { pct: fmtNum((int6.ratio - 1) * 100, 0) })
+    : t("ml.f.accumNo"));
   items.push(
-    `<b>Celda a celda</b>, la Tweedie reduce la deviance un ${fmtNum(devGain, 0)} % frente a la climatología ` +
-    `(${ml.test_years[0]}–${ml.test_years[1]}). ` +
-    `<b>Proyección multianual (prueba ${bt.years[0].year}–${bt.years[nBt - 1].year} sin ver esos años):</b> ` +
-    `${bt.inside_p10_p90}/${nBt} años cayeron dentro de la banda del 80 %; error de la mediana ${fmtNum(bt.mape_median_pct, 0)} % ` +
-    `vs. ${fmtNum(bt.mape_climatology_pct, 0)} % de la climatología. ` +
-    (bt.mape_median_pct > bt.mape_climatology_pct
-      ? "Para el <b>total anual</b> la climatología acierta más: usa la proyección como <b>rango plausible</b>, no como cifra exacta."
-      : "La proyección mejora a la climatología en el total anual.")
+    t("ml.f.pred", {
+      gain: fmtNum(devGain, 0),
+      t0: ml.test_years[0],
+      t1: ml.test_years[1],
+      b0: bt.years[0].year,
+      b1: bt.years[nBt - 1].year,
+      inside: bt.inside_p10_p90,
+      n: nBt,
+      mm: fmtNum(bt.mape_median_pct, 0),
+      mc: fmtNum(bt.mape_climatology_pct, 0)
+    }) + (bt.mape_median_pct > bt.mape_climatology_pct ? t("ml.f.predWorse") : t("ml.f.predBetter"))
   );
-  return items.map((t) => `<li>${t}</li>`).join("");
+  return items.map((x) => `<li>${x}</li>`).join("");
 }
 
 function buildMlMetricsTable(ml) {
@@ -1404,11 +1395,11 @@ function buildMlMetricsTable(ml) {
       const target = lowIsBetter ? Math.min(...vals) : Math.max(...vals);
       return m[k] === target ? " class='ml-best'" : "";
     };
-    return `<tr><td>${m.model}</td>` +
+    return `<tr><td>${mlModelName(m)}</td>` +
       `<td${best("poisson_deviance", true)}>${fmtNum(m.poisson_deviance, 3)}</td>` +
       `<td${best("auc_fire_occurrence", false)}>${fmtNum(m.auc_fire_occurrence, 3)}</td>` +
       `<td${best("mae_bolivia_monthly_total", true)}>${fmtNum(m.mae_bolivia_monthly_total, 0)}</td>` +
-      `<td>${m.total_bias_pct > 0 ? "+" : ""}${fmtNum(m.total_bias_pct, 1)} %</td></tr>`;
+      `<td>${t("pct", { v: (m.total_bias_pct > 0 ? "+" : "") + fmtNum(m.total_bias_pct, 1) })}</td></tr>`;
   };
   const block = (title, rows) =>
     `<tr class="ml-sep"><td colspan="5">${title}</td></tr>` + rows.map((m) => row(m, rows)).join("");
@@ -1419,21 +1410,21 @@ function buildMlMetricsTable(ml) {
   return `
     <table class="ml-table">
       <thead><tr>
-        <th>Modelo (pronóstico a 1 año, celda × mes)</th>
-        <th title="Error para conteos; menor es mejor">Deviance ↓</th>
-        <th title="Capacidad de distinguir celda-mes con y sin fuego; mayor es mejor">AUC ↑</th>
-        <th title="Error absoluto medio del total mensual de Bolivia (celdas-día)">Error total mes ↓</th>
-        <th>Sesgo total</th>
+        <th>${t("ml.th.model")}</th>
+        <th title="${t("ml.th.dev.title")}">${t("ml.th.dev")}</th>
+        <th title="${t("ml.th.auc.title")}">${t("ml.th.auc")}</th>
+        <th title="${t("ml.th.mae.title")}">${t("ml.th.mae")}</th>
+        <th>${t("ml.th.bias")}</th>
       </tr></thead>
       <tbody>
-        ${block(`Prueba fuera de muestra ${ml.test_years[0]}–${ml.test_years[1]} (MODIS Aqua)`, ml.metrics_test)}
-        ${block(`Pronóstico ${ml.forecast_year} ene–oct (provisional, VIIRS armonizado)`, ml.metrics_forecast_2026_provisional)}
+        ${block(t("ml.block.test", { t0: ml.test_years[0], t1: ml.test_years[1] }), ml.metrics_test)}
+        ${block(t("ml.block.fc", { y: ml.forecast_year }), ml.metrics_forecast_2026_provisional)}
       </tbody>
     </table>
     <table class="ml-table">
       <thead><tr>
-        <th>Prueba retrospectiva de la proyección (Bolivia)</th>
-        <th>Observado</th><th>Mediana simulada</th><th>Banda 80 % (P10–P90)</th><th>Climatología</th>
+        <th>${t("ml.bt.head")}</th>
+        <th>${t("ml.bt.obs")}</th><th>${t("ml.bt.med")}</th><th>${t("ml.bt.band")}</th><th>${t("ml.bt.clim")}</th>
       </tr></thead>
       <tbody>${bt}</tbody>
     </table>`;
@@ -1443,21 +1434,22 @@ function renderMlEffectsChart(ml) {
   const dom = document.getElementById("chartMlEffects");
   if (!dom) return;
   if (!chartMlEffects) chartMlEffects = echarts.init(dom);
+  const ysLabels = t("ml.ys");
 
   const series = [];
-  [["occurrence", "¿Hay fuego? (odds ratio)", -5], ["intensity", "Si hay fuego, ¿cuánto? (razón de tasas)", 5]]
+  [["occurrence", t("ml.eff.occ"), -5], ["intensity", t("ml.eff.int"), 5]]
     .forEach(([part, name, dx]) => {
-      const terms = ML_YS_TERMS.map((t) => mlTerm(part, t));
+      const terms = ML_YS_TERMS.map((x) => mlTerm(part, x));
       const color = ML_COLORS[part];
       series.push({
         name, type: "line", color, symbolSize: 8, lineStyle: { width: 2 },
-        data: [1, ...terms.map((t) => t.ratio)],
+        data: [1, ...terms.map((x) => x.ratio)],
         z: 3
       });
       // Barras de error: intervalo de confianza del 95 %
       series.push({
         name, type: "custom", color, z: 2, tooltip: { show: false },
-        data: terms.map((t, i) => [i + 1, t.ci_low, t.ci_high]),
+        data: terms.map((x, i) => [i + 1, x.ci_low, x.ci_high]),
         renderItem: (params, api) => {
           const lo = api.coord([api.value(0), api.value(1)]);
           const hi = api.coord([api.value(0), api.value(2)]);
@@ -1478,7 +1470,7 @@ function renderMlEffectsChart(ml) {
   chartMlEffects.setOption({
     animation: false,
     textStyle: { fontFamily: "Sora, sans-serif" },
-    title: { text: "Años desde el último fuego en la celda", left: 0, top: 0, textStyle: { fontSize: 11, fontWeight: 600 } },
+    title: { text: t("ml.eff.title"), left: 0, top: 0, textStyle: { fontSize: 11, fontWeight: 600 } },
     legend: { top: 18, left: 0, itemWidth: 14, textStyle: { fontSize: 9.5 }, data: series.filter((s) => s.type === "line").map((s) => s.name) },
     grid: { left: 40, right: 12, top: 52, bottom: 38 },
     tooltip: {
@@ -1486,17 +1478,17 @@ function renderMlEffectsChart(ml) {
       trigger: "axis",
       formatter: (ps) => {
         const i = ps[0].dataIndex;
-        let html = `<b>${ML_YS_LABELS[i].replace("\n", " ")}</b>`;
+        let html = `<b>${ysLabels[i].replace("\n", " ")}</b>`;
         ps.filter((p) => p.seriesType === "line").forEach((p) => {
           const part = p.color === ML_COLORS.occurrence ? "occurrence" : "intensity";
-          const t = i === 0 ? null : mlTerm(part, ML_YS_TERMS[i - 1]);
+          const term = i === 0 ? null : mlTerm(part, ML_YS_TERMS[i - 1]);
           html += `<br>${p.marker}${p.seriesName}: <b>${fmtNum(p.value, 2)}</b>` +
-            (t ? ` (IC 95 %: ${fmtNum(t.ci_low, 2)}–${fmtNum(t.ci_high, 2)})` : " (referencia)");
+            (term ? ` (${t("ml.eff.ci")}: ${fmtNum(term.ci_low, 2)}–${fmtNum(term.ci_high, 2)})` : ` ${t("ml.eff.ref")}`);
         });
-        return html + "<br><span style='color:#94a3b8'>1 = igual que una celda que ardió el año pasado</span>";
+        return html + `<br><span style='color:#94a3b8'>${t("ml.eff.note")}</span>`;
       }
     },
-    xAxis: { type: "category", data: ML_YS_LABELS, axisLabel: { fontSize: 9, interval: 0 } },
+    xAxis: { type: "category", data: ysLabels, axisLabel: { fontSize: 9, interval: 0 } },
     yAxis: {
       type: "log", min: 0.1, max: 2, logBase: 10,
       axisLabel: { fontSize: 9, formatter: (v) => `${v}×` },
@@ -1533,20 +1525,20 @@ function renderMlPowerChart(ml) {
   chartMlPower.setOption({
     animation: false,
     textStyle: { fontFamily: "Sora, sans-serif" },
-    title: { text: `Varianza (eje vertical) ∝ media^p  ·  p = ${fmtNum(tw.power, 2)}`, left: 0, top: 0, textStyle: { fontSize: 11, fontWeight: 600 } },
+    title: { text: t("ml.pow.title", { p: fmtNum(tw.power, 2) }), left: 0, top: 0, textStyle: { fontSize: 11, fontWeight: 600 } },
     legend: { top: 18, left: 0, itemWidth: 14, textStyle: { fontSize: 9.5 } },
     grid: { left: 44, right: 12, top: 52, bottom: 38 },
     tooltip: {
       ...TOOLTIP_STYLE,
       trigger: "item",
-      formatter: (p) => `media ${fmtNum(p.value[0], 2)} · varianza ${fmtNum(p.value[1], 2)}`
+      formatter: (p) => t("ml.pow.tip", { m: fmtNum(p.value[0], 2), v: fmtNum(p.value[1], 2) })
     },
-    xAxis: { type: "log", name: "media esperada (celdas-día)", nameLocation: "middle", nameGap: 22, nameTextStyle: { fontSize: 9 }, axisLabel: { fontSize: 9 }, splitLine: { show: false } },
+    xAxis: { type: "log", name: t("ml.pow.x"), nameLocation: "middle", nameGap: 22, nameTextStyle: { fontSize: 9 }, axisLabel: { fontSize: 9 }, splitLine: { show: false } },
     yAxis: { type: "log", axisLabel: { fontSize: 9 }, splitLine: { lineStyle: { color: "#f1f5f9" } } },
     series: [
-      { name: "Grupos", type: "scatter", color: ML_COLORS.obs, symbolSize: 7, data: pts },
-      { name: "Ajuste potencia", type: "line", color: ML_COLORS.intensity, symbol: "none", lineStyle: { width: 2 }, data: line },
-      { name: "Poisson (var = media)", type: "line", color: ML_COLORS.clim, symbol: "none", lineStyle: { width: 1.2, type: "dashed" }, data: poisson }
+      { name: t("ml.pow.groups"), type: "scatter", color: ML_COLORS.obs, symbolSize: 7, data: pts },
+      { name: t("ml.pow.fit"), type: "line", color: ML_COLORS.intensity, symbol: "none", lineStyle: { width: 2 }, data: line },
+      { name: t("ml.pow.poisson"), type: "line", color: ML_COLORS.clim, symbol: "none", lineStyle: { width: 1.2, type: "dashed" }, data: poisson }
     ]
   }, true);
   chartMlPower.resize();
@@ -1560,8 +1552,9 @@ function renderMlProjectionChart(ml) {
 
   const projYears = ml.projection_years;
   const firstProj = projYears[0];
+  const lastProj = projYears[projYears.length - 1];
   const years = [];
-  for (let y = 2003; y <= projYears[projYears.length - 1]; y++) years.push(y);
+  for (let y = 2003; y <= lastProj; y++) years.push(y);
 
   // Historia: suma anual del AOI con los mismos datos que el resto de la app
   const histByYear = new Map();
@@ -1593,6 +1586,12 @@ function renderMlProjectionChart(ml) {
     if (k < 0) return null;
     return Number((projRows ? projRows[k].p50 : meanByYear[k]).toFixed(1));
   });
+
+  const nameObs = t("ml.proj.obs");
+  const nameCentral = presetKey ? t("ml.proj.median") : t("ml.proj.mean");
+  const name80 = t("ml.proj.b80");
+  const name90 = t("ml.proj.b90");
+
   const bandSeries = [];
   if (projRows) {
     const lower = (key) => years.map((y) => {
@@ -1603,7 +1602,7 @@ function renderMlProjectionChart(ml) {
       const k = projYears.indexOf(y);
       return k < 0 ? null : Number((projRows[k][hi] - projRows[k][lo]).toFixed(1));
     });
-    [["p05", "p95", "Banda 90 %", 0.12, "b90"], ["p10", "p90", "Banda 80 %", 0.22, "b80"]].forEach(([lo, hi, name, op, stack]) => {
+    [["p05", "p95", name90, 0.12, "b90"], ["p10", "p90", name80, 0.22, "b80"]].forEach(([lo, hi, name, op, stack]) => {
       bandSeries.push({ name: `_${stack}`, type: "line", stack, data: lower(lo), symbol: "none", lineStyle: { opacity: 0 }, tooltip: { show: false } });
       bandSeries.push({
         name, type: "line", stack, data: width(lo, hi), symbol: "none", color: ML_COLORS.band,
@@ -1612,14 +1611,13 @@ function renderMlProjectionChart(ml) {
     });
   }
 
-  const regionName = { all: "Toda Bolivia", chiquitania: "Chiquitanía y Llanos", amazonia: "Amazonía y Beni", andina: "Andina y Valles" };
-  const title = presetKey ? regionName[presetKey] : "Área dibujada (solo media; bandas solo para regiones predefinidas)";
+  const area = presetKey ? zoneName(presetKey) : t("ml.proj.custom");
 
   chartMlProjection.setOption({
     animation: false,
     textStyle: { fontFamily: "Sora, sans-serif" },
-    title: { text: `Proyección hasta ${projYears[projYears.length - 1]} · ${title} (días con fuego al año)`, left: 0, top: 0, textStyle: { fontSize: 11, fontWeight: 600 } },
-    legend: { top: 18, left: 0, itemWidth: 14, textStyle: { fontSize: 9.5 }, data: ["Observado (armonizado)", presetKey ? "Mediana simulada" : "Media simulada", ...(presetKey ? ["Banda 80 %", "Banda 90 %"] : [])] },
+    title: { text: t("ml.proj.title", { end: lastProj, area }), left: 0, top: 0, textStyle: { fontSize: 11, fontWeight: 600 } },
+    legend: { top: 18, left: 0, itemWidth: 14, textStyle: { fontSize: 9.5 }, data: [nameObs, nameCentral, ...(presetKey ? [name80, name90] : [])] },
     grid: { left: 48, right: 14, top: 52, bottom: 26 },
     tooltip: {
       ...TOOLTIP_STYLE,
@@ -1628,15 +1626,19 @@ function renderMlProjectionChart(ml) {
         const y = years[ps[0].dataIndex];
         const k = projYears.indexOf(y);
         let html = `<b>${y}</b>`;
-        if (hist[idx(y)] !== null && y < firstProj) html += `<br>Observado: <b>${fmtNum(hist[idx(y)])}</b> celdas-día`;
+        if (hist[idx(y)] !== null && y < firstProj) html += `<br>${t("ml.proj.tip.obs", { v: fmtDays(hist[idx(y)]) })}`;
         if (k >= 0) {
           if (projRows) {
             const r = projRows[k];
-            html += `<br>Mediana: <b>${fmtNum(r.p50)}</b><br>80 %: ${fmtNum(r.p10)} – ${fmtNum(r.p90)}<br>90 %: ${fmtNum(r.p05)} – ${fmtNum(r.p95)}`;
+            html += `<br>${t("ml.proj.tip.median", { v: fmtDays(r.p50) })}` +
+              `<br>${name80}: ${fmtDays(r.p10)} – ${fmtDays(r.p90)}<br>${name90}: ${fmtDays(r.p05)} – ${fmtDays(r.p95)}`;
           } else {
-            html += `<br>Media simulada: <b>${fmtNum(meanByYear[k])}</b>`;
+            html += `<br>${t("ml.proj.tip.mean", { v: fmtDays(meanByYear[k]) })}`;
           }
-          if (y === ml.forecast_year) html += `<br><span style='color:#94a3b8'>${y}: ene–${MONTH_NAMES[ml.forecast_observed_through_month - 1].toLowerCase()} observado + resto simulado</span>`;
+          if (y === ml.forecast_year) {
+            const m = MONTH_NAMES[ml.forecast_observed_through_month - 1];
+            html += `<br><span style='color:#94a3b8'>${t("ml.proj.tip.partial", { y, m })}</span>`;
+          }
         }
         return html;
       }
@@ -1646,20 +1648,20 @@ function renderMlProjectionChart(ml) {
     series: [
       ...bandSeries,
       {
-        name: "Observado (armonizado)", type: "line", color: ML_COLORS.obs, symbolSize: 4, lineStyle: { width: 2 },
+        name: nameObs, type: "line", color: ML_COLORS.obs, symbolSize: 4, lineStyle: { width: 2 },
         data: hist.map((v, i) => (years[i] < firstProj ? v : null)),
         // Referencia: promedio anual 2003–2025 (la "climatología" contra la que se compara el modelo)
         markLine: {
           symbol: "none", silent: true,
           lineStyle: { color: ML_COLORS.clim, type: "dotted", width: 1.2 },
-          label: { formatter: "Promedio 2003–2025", position: "insideStartTop", fontSize: 9, color: ML_COLORS.clim },
-          data: [{ yAxis: Number((histAvg).toFixed(1)) }]
+          label: { formatter: t("ml.proj.avg"), position: "insideStartTop", fontSize: 9, color: ML_COLORS.clim },
+          data: [{ yAxis: Number(histAvg.toFixed(1)) }]
         }
       },
       {
-        name: presetKey ? "Mediana simulada" : "Media simulada", type: "line", color: ML_COLORS.intensity, symbolSize: 5,
+        name: nameCentral, type: "line", color: ML_COLORS.intensity, symbolSize: 5,
         lineStyle: { width: 2, type: "dashed" }, data: central,
-        markArea: { silent: true, itemStyle: { color: "rgba(148,163,184,0.08)" }, data: [[{ xAxis: String(firstProj) }, { xAxis: String(projYears[projYears.length - 1]) }]] }
+        markArea: { silent: true, itemStyle: { color: "rgba(148,163,184,0.08)" }, data: [[{ xAxis: String(firstProj) }, { xAxis: String(lastProj) }]] }
       }
     ]
   }, true);
@@ -1671,36 +1673,31 @@ function renderMlPanel() {
   const ml = getMl();
   if (!el) return;
   if (!ml) {
-    el.innerHTML = "<p class='rank-help'>No se encontró data/processed/ml_bundle.js. Ejecuta: python scripts/ml_model.py</p>";
+    el.innerHTML = `<p class='rank-help'>${t("ml.missing")}</p>`;
     return;
   }
 
-  // El esqueleto se crea una sola vez; luego solo se actualizan los gráficos (el AOI cambia).
+  // El esqueleto se crea una vez (y de nuevo al cambiar de idioma); luego solo se actualizan los gráficos.
   if (!el.dataset.built) {
     const yearOpts = ml.projection_years
       .map((y) => `<option value="${y}"${y === state.mlYear ? " selected" : ""}>${y}</option>`).join("");
     el.innerHTML = `
       <ul class="ml-findings">${buildMlFindings(ml)}</ul>
       <div class="ml-proj-head">
-        <label class="map-toolbar-label" for="mlYearSelect">AÑO PROYECTADO EN EL MAPA</label>
+        <label class="map-toolbar-label" for="mlYearSelect">${t("ml.year.label")}</label>
         <select id="mlYearSelect">${yearOpts}</select>
-        <button type="button" class="btn-action" id="btnMlMap">Ver en el mapa</button>
+        <button type="button" class="btn-action" id="btnMlMap">${t("ml.year.btn")}</button>
       </div>
-      <div id="chartMlProjection" class="ml-chart ml-chart-wide" role="img" aria-label="Serie anual observada y proyección hasta 2030 con bandas de incertidumbre"></div>
+      <div id="chartMlProjection" class="ml-chart ml-chart-wide" role="img" aria-label="${t("ml.aria.proj")}"></div>
       <div class="ml-charts">
-        <div id="chartMlEffects" class="ml-chart" role="img" aria-label="Efecto de los años desde el último fuego sobre la ocurrencia y la intensidad"></div>
-        <div id="chartMlPower" class="ml-chart" role="img" aria-label="Relación de potencia entre la media y la varianza del conteo de fuego"></div>
+        <div id="chartMlEffects" class="ml-chart" role="img" aria-label="${t("ml.aria.eff")}"></div>
+        <div id="chartMlPower" class="ml-chart" role="img" aria-label="${t("ml.aria.pow")}"></div>
       </div>
       ${buildMlMetricsTable(ml)}
-      <p class="rank-help ml-note">
-        Unidad: celda de 0,25° × mes. Variables: normal histórico de la celda, fuego el mismo mes del año anterior,
-        años desde el último fuego y fuego en celdas vecinas, todas con datos <b>solo hasta el año anterior</b>.
-        La proyección encadena ${ml.n_sims} simulaciones año a año (lo simulado en un año es la historia del siguiente) e incluye
-        el azar del fuego, la incertidumbre de los coeficientes y un “efecto año” común (años secos o húmedos).
-        <b>Supone que el clima y el uso del suelo se comportan como en 2003–2025</b>; no anticipa sequías extremas ni cambios de política.
-        Las celdas-día miden duración/extensión del fuego, no área quemada. Detalles en docs/METODO.md.
-      </p>`;
+      <p class="rank-help ml-note">${t("ml.note", { n: ml.n_sims })}</p>`;
     el.dataset.built = "1";
+    // Los divs de los gráficos son nuevos: se liberan las instancias anteriores
+    [chartMlEffects, chartMlPower, chartMlProjection].forEach((c) => c && c.dispose());
     chartMlEffects = null;
     chartMlPower = null;
     chartMlProjection = null;
@@ -1765,9 +1762,9 @@ function renderCalendarChart() {
         const b = state.currentSeriesByYm.get(ymKey(year, mNum));
         return `
           <div style="font-weight:700;margin-bottom:3px">${MONTH_FULL_NAMES[mNum - 1]} ${year}</div>
-          <div><b>${fmtDays(val)}</b> días con fuego</div>
+          <div>${t("seasonal.days", { v: fmtDays(val) })}</div>
           <div style="color:${status.color}">${status.label}</div>
-          ${b && b.hasNrt ? "<div style='color:#94a3b8;font-size:10px'>Dato provisional</div>" : ""}`;
+          ${b && b.hasNrt ? `<div style='color:#94a3b8;font-size:10px'>${t("cal.provisional")}</div>` : ""}`;
       }
     },
     grid: { top: 8, bottom: 58, left: 46, right: 12 },
@@ -1796,13 +1793,13 @@ function renderCalendarChart() {
       bottom: 4,
       itemWidth: 12,
       itemHeight: 160,
-      text: ["Más fuego", "Menos fuego"],
+      text: [t("cal.more"), t("cal.less")],
       inRange: { color: CAL_RAMP },
       textStyle: { color: "#64748b", fontSize: 11, fontFamily: "Sora" }
     },
     series: [
       {
-        name: "Días con fuego",
+        name: t("series.days"),
         type: "heatmap",
         data,
         label: { show: false },
@@ -1994,15 +1991,15 @@ function applyCoordForm(e) {
   };
 
   if ([latMin, latMax, lonMin, lonMax].some((v) => Number.isNaN(v))) {
-    showError("Completa las cuatro coordenadas (latitud y longitud mínimas y máximas).");
+    showError(t("coord.err.empty"));
     return;
   }
   if (latMin >= latMax || lonMin >= lonMax) {
-    showError("El mínimo debe ser menor que el máximo en latitud y en longitud.");
+    showError(t("coord.err.order"));
     return;
   }
   if (latMin < -90 || latMax > 90 || lonMin < -180 || lonMax > 180) {
-    showError("Coordenadas fuera de rango: latitud entre -90 y 90, longitud entre -180 y 180.");
+    showError(t("coord.err.range"));
     return;
   }
   applyCustomBbox(lonMin, latMin, lonMax, latMax);
@@ -2139,6 +2136,11 @@ function bindEvents() {
     btn.addEventListener("click", () => switchView(btn.dataset.view));
   });
 
+  // Botones ES | EN
+  document.querySelectorAll(".lang-btn").forEach((btn) => {
+    btn.addEventListener("click", () => setLang(btn.dataset.lang));
+  });
+
   window.addEventListener("resize", refreshSizes);
 }
 
@@ -2150,8 +2152,38 @@ function refreshSizes() {
   if (map) map.invalidateSize();
 }
 
+/* =========================================================================
+ * 8. Idioma (ES / EN)
+ * ========================================================================= */
+/** Recalcula los textos guardados en variables (meses) y los del selector de mes. */
+function refreshLangConstants() {
+  MONTH_NAMES = t("months.short");
+  MONTH_FULL_NAMES = t("months.full");
+  const sel = document.getElementById("focusMonth");
+  if (sel) {
+    Array.from(sel.options).forEach((opt) => {
+      opt.textContent = MONTH_FULL_NAMES[parseInt(opt.value, 10) - 1];
+    });
+  }
+}
+
+/** i18n.js llama a esta función después de cambiar de idioma: se redibuja todo. */
+window.onLanguageChange = function onLanguageChange() {
+  refreshLangConstants();
+  buildLayersControl();
+  buildDrawControl();
+  updatePlayButton();
+  const mlEl = document.getElementById("mlView");
+  if (mlEl) delete mlEl.dataset.built; // el panel técnico se rehace con los nuevos textos
+  if (map) map.closePopup();
+  recomputeAoiSelection(); // avisos, mapa, leyenda, resumen y gráfico visible
+};
+
 (async function initApp() {
   try {
+    applyStaticI18n();
+    refreshLangConstants();
+    updatePlayButton();
     populateYearSelectors();
     initMap();
     bindEvents();
@@ -2163,7 +2195,7 @@ function refreshSizes() {
     const warnBar = document.getElementById("aoiWarning");
     const warnTxt = document.getElementById("aoiWarningText");
     if (warnBar && warnTxt) {
-      warnTxt.textContent = "Error al inicializar datos: " + (err.message || err);
+      warnTxt.textContent = t("warn.initError") + (err.message || err);
       warnBar.classList.remove("hidden");
     }
   }

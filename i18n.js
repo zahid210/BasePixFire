@@ -1,0 +1,595 @@
+/**
+ * i18n.js — Textos de la interfaz en español (ES) e inglés (EN).
+ *
+ * Uso:
+ *   - En HTML: data-i18n="clave" (texto), data-i18n-html="clave" (con etiquetas),
+ *     data-i18n-title="clave" (tooltip) y data-i18n-aria="clave" (lector de pantalla).
+ *   - En JS: t("clave", { variable: valor }) reemplaza {variable} en el texto.
+ *
+ * Para agregar un texto: añadir la misma clave en "es" y en "en".
+ * Si una clave falta en inglés, se muestra la versión en español.
+ */
+
+const I18N = {
+  es: {
+    "locale": "es-BO",
+    "doc.title": "PixFire Bolivia — Fuego visto por satélite (2003–2026)",
+    "brand.desc": "Fuego visto por satélite · 2003–2026",
+
+    // Barra superior
+    "lang.aria": "Idioma",
+    "top.zone": "Zona",
+    "top.month": "Mes",
+    "top.year": "Año",
+    "top.years": "Años a mostrar",
+    "top.to": "a",
+    "top.fromYear": "Desde el año",
+    "top.toYear": "Hasta el año",
+    "dl.button": "Descargar",
+    "dl.series.t": "Datos de la zona",
+    "dl.series.d": "Un valor por mes · archivo CSV (Excel)",
+    "dl.cells.t": "Datos por cuadro del mapa",
+    "dl.cells.d": "Detalle de cada cuadro y mes · archivo CSV",
+    "dl.png.t": "Imagen del gráfico",
+    "dl.png.d": "El gráfico que estás viendo · PNG",
+    "reset": "Volver a toda Bolivia",
+
+    // Zonas
+    "zone.all": "Toda Bolivia",
+    "zone.chiquitania": "Chiquitanía y Llanos",
+    "zone.amazonia": "Amazonía y Beni",
+    "zone.andina": "Andina y Valles",
+    "zone.custom": "Zona elegida en el mapa",
+    "sub.chiquitania_llanos": "Chiquitanía y Llanos",
+    "sub.amazonia_beni_norte": "Amazonía y Beni Norte",
+    "sub.andina_valles": "Andina y Valles",
+
+    // Meses
+    "months.short": ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
+    "months.full": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto",
+      "Septiembre", "Octubre", "Noviembre", "Diciembre"],
+
+    // Mapa
+    "map.aria": "Mapa de Bolivia",
+    "map.shows": "El mapa muestra",
+    "map.shows.aria": "Qué muestra el mapa",
+    "map.mode.period": "Lo habitual",
+    "map.mode.period.title": "Promedio de los años elegidos",
+    "map.mode.month": "El mes elegido",
+    "map.mode.month.title": "Solo el mes elegido arriba",
+    "map.mode.ml": "Pronóstico 2030",
+    "map.mode.ml.title": "Lo que un modelo estadístico espera año a año hasta 2030 (elige el año en la pestaña Pronóstico)",
+    "map.play": "▶ Animar",
+    "map.play.title": "Recorre los meses uno por uno",
+    "map.play.aria": "Animar mes a mes",
+    "map.pause": "❚❚ Pausa",
+    "map.pause.aria": "Pausar animación",
+    "map.hint": "Haz clic en un cuadro para ver su historia, o dibuja tu propia zona con las herramientas del mapa (arriba a la derecha).",
+    "map.layer.light": "Mapa claro",
+    "map.layer.sat": "Satélite",
+    "coord.summary": "Elegir la zona con coordenadas",
+    "coord.aria": "Zona por coordenadas",
+    "coord.latFrom": "Latitud de",
+    "coord.lonFrom": "Longitud de",
+    "coord.to": "a",
+    "coord.latMax": "Latitud máxima",
+    "coord.lonMax": "Longitud máxima",
+    "coord.apply": "Aplicar",
+    "coord.err.empty": "Completa las cuatro coordenadas (latitud y longitud mínimas y máximas).",
+    "coord.err.order": "El mínimo debe ser menor que el máximo en latitud y en longitud.",
+    "coord.err.range": "Coordenadas fuera de rango: latitud entre -90 y 90, longitud entre -180 y 180.",
+
+    // Herramientas de dibujo (Leaflet.draw)
+    "draw.polygon": "Dibujar una zona",
+    "draw.rectangle": "Dibujar un rectángulo",
+    "draw.cancel": "Cancelar",
+    "draw.finish": "Terminar",
+    "draw.undo": "Borrar el último punto",
+    "draw.poly.start": "Haz clic para empezar a dibujar",
+    "draw.poly.cont": "Haz clic para seguir dibujando",
+    "draw.poly.end": "Haz clic en el primer punto para cerrar la zona",
+    "draw.rect.start": "Haz clic y arrastra para marcar la zona",
+    "draw.shape.end": "Suelta para terminar",
+    "draw.edit": "Modificar la zona",
+    "draw.editDisabled": "No hay zona para modificar",
+    "draw.remove": "Borrar la zona",
+    "draw.removeDisabled": "No hay zona para borrar",
+    "draw.save": "Guardar",
+    "draw.clearAll": "Borrar todo",
+
+    // Escalas del mapa
+    "scale.period.title": "Días con fuego al año (promedio)",
+    "scale.month.title": "Días con fuego en ese mes",
+    "scale.ml.title": "Días con fuego esperados (promedio de las simulaciones)",
+    "scale.vhigh": "Muy frecuente · más de 25",
+    "scale.high": "Frecuente · 10 a 25",
+    "scale.mid": "Ocasional · 2 a 10",
+    "scale.low": "Raro · menos de 2",
+    "scale.m15": "Más de 15 días",
+    "scale.m7": "7 a 15 días",
+    "scale.m3": "3 a 7 días",
+    "scale.m1": "1 a 3 días",
+    "scale.none": "Sin fuego",
+    "legend.ml": "Proyección {year}",
+    "legend.period": "Lo habitual, {from}–{to}",
+    "tip.ml": "Esperado en {year}: <b>{v}</b> días con fuego (promedio simulado)",
+    "tip.month": "{month} {year}: <b>{v}</b> días con fuego",
+    "tip.period": "Promedio {from}–{to}: <b>{v}</b> días con fuego al año",
+    "tip.click": "Clic para ver la historia de este lugar",
+
+    // Popup de celda
+    "cp.title": "Historia de este lugar",
+    "cp.square": "cuadro de ~27 km",
+    "cp.avg": "Promedio al año",
+    "cp.peak": "Peor año",
+    "cp.days": "{v} días",
+    "cp.note": "Días con fuego por año · *2026 solo hasta octubre",
+    "cp.btn": "Ver solo este lugar",
+    "cp.spark.aria": "Días con fuego por año en este lugar",
+
+    // Avisos de zona
+    "warn.outside": "Parte de la zona queda fuera de Bolivia: solo se cuenta lo que está dentro del país.",
+    "warn.empty": "En la zona elegida no hay fuego registrado. Prueba con una zona más grande.",
+    "warn.small": "La zona es muy pequeña: los números cambian mucho de un mes a otro y conviene leerlos con cuidado.",
+    "warn.initError": "Error al inicializar datos: ",
+
+    // Resumen
+    "sum.aria": "Resumen y gráficos",
+    "sum.unit": "días con fuego",
+    "sum.info.title": "¿Qué significa?",
+    "sum.less": "Menos fuego",
+    "sum.normal": "Lo normal:",
+    "sum.more": "Más fuego",
+    "sum.info.html": "<b>¿Qué es un “día con fuego”?</b> Dividimos Bolivia en cuadros de unos 27 km de lado. Cada cuadro suma 1 por cada día en que el satélite vio fuego en él, y aquí se suman todos los cuadros de la zona. Mide cuánto y por cuánto tiempo hubo fuego: <b>no es el número de incendios ni la superficie quemada</b>. “Lo normal” es el rango en que cayó la mitad central de los años 2003–2025 para ese mismo mes.",
+    "sum.trust.html": "Datos de dos satélites de la NASA, corregidos para que se puedan comparar · <u>ver cómo</u>",
+    "status.high": "Más alto de lo normal",
+    "status.low": "Más bajo de lo normal",
+    "status.normal": "Dentro de lo normal",
+    "sum.typical": "un {monthLower} típico",
+    "sum.same": "Prácticamente igual que {typical}.",
+    "sum.times": "{x} veces el fuego de {typical}.",
+    "sum.more.pct": "Un {pct} % más que {typical}.",
+    "sum.less.pct": "Un {pct} % menos que {typical}.",
+    "sum.noFireTypical": "En {typical} casi no hay fuego en esta zona.",
+    "sum.none": "Sin fuego detectado, igual que en {typical}.",
+    "sum.range": " Lo normal para este mes es entre {a} y {b}.",
+    "sum.provisional": " Dato provisional.",
+    "sum.sr": "{month} {year}, {zone}: {v} días con fuego. {status}. {sentence}",
+
+    // Pestañas
+    "tabs.aria": "Gráficos",
+    "tab.calendar": "Calendario",
+    "tab.series": "Evolución",
+    "tab.seasonal": "¿Es normal?",
+    "tab.ranking": "Peores años",
+    "tab.ml": "Pronóstico (técnico)",
+    "view.calendar.title": "Calendario de fuego",
+    "view.calendar.help": "Cada fila es un año y cada columna un mes. Más oscuro = más fuego. Haz clic en un mes para verlo arriba y en el mapa.",
+    "view.series.title": "Evolución mes a mes",
+    "view.series.help": "La línea sube cuando hay más fuego. Usa la rueda del ratón o la barra de abajo para acercarte.",
+    "view.seasonal.title": "¿Fue normal {year}?",
+    "view.seasonal.help": "Barras = ese año. Franja gris = lo normal. Barra naranja: más fuego de lo normal; verde: menos; gris: normal.",
+    "view.ranking.title": "Años y meses con más fuego",
+    "view.ranking.help": "Haz clic en una fila para ver ese momento arriba y en el mapa.",
+    "view.ml.title": "Proyección hasta 2030 con un modelo estadístico",
+    "view.ml.help": "Sección técnica para especialistas: qué tanto se puede anticipar el fuego con la historia de cada lugar.",
+
+    // Evolución y comparación de satélites
+    "cmp.check": "Mostrar la corrección entre satélites",
+    "cmp.legend.aria": "Líneas del gráfico",
+    "series.final": "Dato final (corregido)",
+    "series.days": "Días con fuego",
+    "series.modis": "Satélite antiguo (MODIS)",
+    "series.viirsRaw": "Satélite nuevo sin corregir (VIIRS)",
+    "series.viirsCorr": "Satélite nuevo corregido",
+    "series.area.both": "Los dos satélites a la vez",
+    "series.area.new": "Solo el satélite nuevo",
+    "trust.why": "<b>¿Por qué se corrige?</b> El satélite nuevo (VIIRS) ve fuegos más pequeños que el antiguo (MODIS), así que cuenta más aunque haya el mismo fuego. Para poder comparar todos los años, sus datos se ajustan a la escala del antiguo. ",
+    "trust.noData": "En esta zona no hay datos suficientes de los años con ambos satélites para comprobar el ajuste.",
+    "trust.check": "<b>Comprobación</b> ({scope}): sin corregir, el satélite nuevo contaba <b>{raw}</b> respecto al antiguo; después de corregir, la diferencia es de <b>{harm}</b>.",
+    "trust.scope.all": "2017–2021 (años que no se usaron para calcular la corrección)",
+    "trust.scope.region": "2012–2021 en esta región",
+    "trust.scope.custom": "2012–2021 en esta zona",
+    "pct": "{v} %",
+
+    // ¿Es normal?
+    "seasonal.typical": "Mes típico",
+    "seasonal.range": "Rango normal",
+    "seasonal.noData": "Todavía sin datos",
+    "seasonal.days": "<b>{v}</b> días con fuego",
+    "seasonal.normal": "Lo normal: entre {a} y {b}",
+
+    // Calendario
+    "cal.more": "Más fuego",
+    "cal.less": "Menos fuego",
+    "cal.provisional": "Dato provisional",
+    "chart.calendar.aria": "Calendario de fuego por año y mes",
+    "chart.series.aria": "Evolución mensual de los días con fuego",
+    "chart.seasonal.aria": "Meses del año elegido frente a lo normal",
+
+    // Ranking
+    "rank.years": "Los 5 años con más fuego",
+    "rank.months": "Los 5 meses con más fuego",
+    "rank.noData": "Sin datos",
+    "rank.yearTimes": "{x} veces un año promedio",
+    "rank.monthTimes": "{x} veces lo típico de ese mes",
+    "rank.note": "Números en días con fuego, entre {from} y {to}. *2026 solo incluye enero–octubre (provisional).",
+
+    // Pie de página
+    "footer.links": "Datos: <a href=\"https://www.earthdata.nasa.gov/data/tools/firms\" target=\"_blank\" rel=\"noopener\">NASA FIRMS</a> · <a href=\"docs/METODO.md\" target=\"_blank\" rel=\"noopener\">Método</a> · <a href=\"REFERENCES.md\" target=\"_blank\" rel=\"noopener\">Referencias</a> · <a href=\"LICENSE\" target=\"_blank\" rel=\"noopener\">Licencia Apache 2.0</a>",
+    "footer.note": "NASA Space Apps Challenge 2026 · sin patrocinio oficial de NASA · 2026 es provisional (enero–octubre)",
+
+    // Pestaña técnica (modelo ML)
+    "ml.missing": "No se encontró data/processed/ml_bundle.js. Ejecuta: python scripts/ml_model.py",
+    "ml.ys": ["1 año\n(referencia)", "2 años", "3 años", "4–5 años", "6+ años o\nsin registro"],
+    "ml.f.normal": "<b>No es una distribución normal.</b> El {zeros} % de las celdas-mes vale 0 y la varianza es {ratio} veces la media. Usamos una <b>Tweedie</b>: la varianza crece como una potencia de la media, Var ≈ {phi} · media<sup>{p}</sup> (p estimado de los datos).",
+    "ml.f.persist": "<b>Persistencia:</b> si la celda ardió el año pasado, las probabilidades (odds) de fuego son <b>{x}×</b> mayores que en una celda con 6+ años sin fuego, aun descontando su normal histórico.",
+    "ml.f.persistNo": "<b>Persistencia:</b> el efecto de haber ardido el año pasado no es concluyente (IC 95 % cruza 1).",
+    "ml.f.accum": "<b>Acumulación:</b> cuando el fuego vuelve tras 6+ años sin fuego, dura/se extiende <b>{pct} %</b> más celdas-día que en una celda que ardió el año pasado.",
+    "ml.f.accumNo": "<b>Acumulación:</b> no se encontró un aumento claro de intensidad tras años sin fuego.",
+    "ml.f.pred": "<b>Celda a celda</b>, la Tweedie reduce la deviance un {gain} % frente a la climatología ({t0}–{t1}). <b>Proyección multianual (prueba {b0}–{b1} sin ver esos años):</b> {inside}/{n} años cayeron dentro de la banda del 80 %; error de la mediana {mm} % vs. {mc} % de la climatología. ",
+    "ml.f.predWorse": "Para el <b>total anual</b> la climatología acierta más: usa la proyección como <b>rango plausible</b>, no como cifra exacta.",
+    "ml.f.predBetter": "La proyección mejora a la climatología en el total anual.",
+    "ml.model.clim": "Climatología de la celda (línea base)",
+    "ml.model.nb": "Binomial negativa (GLM)",
+    "ml.model.tweedie": "Tweedie (GLM, varianza ∝ media^p)",
+    "ml.model.hgb": "Gradient boosting Poisson",
+    "ml.th.model": "Modelo (pronóstico a 1 año, celda × mes)",
+    "ml.th.dev": "Deviance ↓",
+    "ml.th.dev.title": "Error para conteos; menor es mejor",
+    "ml.th.auc": "AUC ↑",
+    "ml.th.auc.title": "Capacidad de distinguir celda-mes con y sin fuego; mayor es mejor",
+    "ml.th.mae": "Error total mes ↓",
+    "ml.th.mae.title": "Error absoluto medio del total mensual de Bolivia (celdas-día)",
+    "ml.th.bias": "Sesgo total",
+    "ml.block.test": "Prueba fuera de muestra {t0}–{t1} (MODIS Aqua)",
+    "ml.block.fc": "Pronóstico {y} ene–oct (provisional, VIIRS armonizado)",
+    "ml.bt.head": "Prueba retrospectiva de la proyección (Bolivia)",
+    "ml.bt.obs": "Observado",
+    "ml.bt.med": "Mediana simulada",
+    "ml.bt.band": "Banda 80 % (P10–P90)",
+    "ml.bt.clim": "Climatología",
+    "ml.eff.title": "Años desde el último fuego en la celda",
+    "ml.eff.occ": "¿Hay fuego? (odds ratio)",
+    "ml.eff.int": "Si hay fuego, ¿cuánto? (razón de tasas)",
+    "ml.eff.ci": "IC 95 %",
+    "ml.eff.ref": "(referencia)",
+    "ml.eff.note": "1 = igual que una celda que ardió el año pasado",
+    "ml.pow.title": "Varianza (eje vertical) ∝ media^p  ·  p = {p}",
+    "ml.pow.tip": "media {m} · varianza {v}",
+    "ml.pow.x": "media esperada (celdas-día)",
+    "ml.pow.groups": "Grupos",
+    "ml.pow.fit": "Ajuste potencia",
+    "ml.pow.poisson": "Poisson (var = media)",
+    "ml.proj.custom": "Área dibujada (solo media; bandas solo para regiones predefinidas)",
+    "ml.proj.title": "Proyección hasta {end} · {area} (días con fuego al año)",
+    "ml.proj.obs": "Observado (armonizado)",
+    "ml.proj.median": "Mediana simulada",
+    "ml.proj.mean": "Media simulada",
+    "ml.proj.b80": "Banda 80 %",
+    "ml.proj.b90": "Banda 90 %",
+    "ml.proj.avg": "Promedio 2003–2025",
+    "ml.proj.tip.obs": "Observado: <b>{v}</b> días con fuego",
+    "ml.proj.tip.median": "Mediana: <b>{v}</b>",
+    "ml.proj.tip.mean": "Media simulada: <b>{v}</b>",
+    "ml.proj.tip.partial": "{y}: ene–{m} observado + resto simulado",
+    "ml.year.label": "AÑO PROYECTADO EN EL MAPA",
+    "ml.year.btn": "Ver en el mapa",
+    "ml.aria.proj": "Serie anual observada y proyección hasta 2030 con bandas de incertidumbre",
+    "ml.aria.eff": "Efecto de los años desde el último fuego sobre la ocurrencia y la intensidad",
+    "ml.aria.pow": "Relación de potencia entre la media y la varianza del conteo de fuego",
+    "ml.note": "Unidad: celda de 0,25° × mes. Variables: normal histórico de la celda, fuego el mismo mes del año anterior, años desde el último fuego y fuego en celdas vecinas, todas con datos <b>solo hasta el año anterior</b>. La proyección encadena {n} simulaciones año a año (lo simulado en un año es la historia del siguiente) e incluye el azar del fuego, la incertidumbre de los coeficientes y un “efecto año” común (años secos o húmedos). <b>Supone que el clima y el uso del suelo se comportan como en 2003–2025</b>; no anticipa sequías extremas ni cambios de política. Las celdas-día miden duración/extensión del fuego, no área quemada. Detalles en docs/METODO.md."
+  },
+
+  en: {
+    "locale": "en-US",
+    "doc.title": "PixFire Bolivia — Fire seen from space (2003–2026)",
+    "brand.desc": "Fire seen from space · 2003–2026",
+
+    "lang.aria": "Language",
+    "top.zone": "Area",
+    "top.month": "Month",
+    "top.year": "Year",
+    "top.years": "Years shown",
+    "top.to": "to",
+    "top.fromYear": "From year",
+    "top.toYear": "To year",
+    "dl.button": "Download",
+    "dl.series.t": "Area data",
+    "dl.series.d": "One value per month · CSV file (Excel)",
+    "dl.cells.t": "Data per map square",
+    "dl.cells.d": "Each square and month · CSV file",
+    "dl.png.t": "Chart image",
+    "dl.png.d": "The chart you are viewing · PNG",
+    "reset": "Back to all of Bolivia",
+
+    "zone.all": "All of Bolivia",
+    "zone.chiquitania": "Chiquitanía and Lowlands",
+    "zone.amazonia": "Amazon and Beni",
+    "zone.andina": "Andes and Valleys",
+    "zone.custom": "Area chosen on the map",
+    "sub.chiquitania_llanos": "Chiquitanía and Lowlands",
+    "sub.amazonia_beni_norte": "Amazon and Northern Beni",
+    "sub.andina_valles": "Andes and Valleys",
+
+    "months.short": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "months.full": ["January", "February", "March", "April", "May", "June", "July", "August",
+      "September", "October", "November", "December"],
+
+    "map.aria": "Map of Bolivia",
+    "map.shows": "The map shows",
+    "map.shows.aria": "What the map shows",
+    "map.mode.period": "Typical",
+    "map.mode.period.title": "Average of the selected years",
+    "map.mode.month": "Selected month",
+    "map.mode.month.title": "Only the month selected above",
+    "map.mode.ml": "Forecast 2030",
+    "map.mode.ml.title": "What a statistical model expects year by year up to 2030 (choose the year in the Forecast tab)",
+    "map.play": "▶ Play",
+    "map.play.title": "Steps through the months one by one",
+    "map.play.aria": "Animate month by month",
+    "map.pause": "❚❚ Pause",
+    "map.pause.aria": "Pause animation",
+    "map.hint": "Click a square to see its history, or draw your own area with the map tools (top right).",
+    "map.layer.light": "Light map",
+    "map.layer.sat": "Satellite",
+    "coord.summary": "Choose the area by coordinates",
+    "coord.aria": "Area by coordinates",
+    "coord.latFrom": "Latitude from",
+    "coord.lonFrom": "Longitude from",
+    "coord.to": "to",
+    "coord.latMax": "Maximum latitude",
+    "coord.lonMax": "Maximum longitude",
+    "coord.apply": "Apply",
+    "coord.err.empty": "Fill in all four coordinates (minimum and maximum latitude and longitude).",
+    "coord.err.order": "The minimum must be smaller than the maximum for both latitude and longitude.",
+    "coord.err.range": "Coordinates out of range: latitude between -90 and 90, longitude between -180 and 180.",
+
+    "draw.polygon": "Draw an area",
+    "draw.rectangle": "Draw a rectangle",
+    "draw.cancel": "Cancel",
+    "draw.finish": "Finish",
+    "draw.undo": "Delete the last point",
+    "draw.poly.start": "Click to start drawing",
+    "draw.poly.cont": "Click to keep drawing",
+    "draw.poly.end": "Click the first point to close the area",
+    "draw.rect.start": "Click and drag to mark the area",
+    "draw.shape.end": "Release to finish",
+    "draw.edit": "Edit the area",
+    "draw.editDisabled": "No area to edit",
+    "draw.remove": "Delete the area",
+    "draw.removeDisabled": "No area to delete",
+    "draw.save": "Save",
+    "draw.clearAll": "Clear all",
+
+    "scale.period.title": "Fire days per year (average)",
+    "scale.month.title": "Fire days in that month",
+    "scale.ml.title": "Expected fire days (average of the simulations)",
+    "scale.vhigh": "Very frequent · over 25",
+    "scale.high": "Frequent · 10 to 25",
+    "scale.mid": "Occasional · 2 to 10",
+    "scale.low": "Rare · under 2",
+    "scale.m15": "Over 15 days",
+    "scale.m7": "7 to 15 days",
+    "scale.m3": "3 to 7 days",
+    "scale.m1": "1 to 3 days",
+    "scale.none": "No fire",
+    "legend.ml": "Forecast {year}",
+    "legend.period": "Typical, {from}–{to}",
+    "tip.ml": "Expected in {year}: <b>{v}</b> fire days (simulated average)",
+    "tip.month": "{month} {year}: <b>{v}</b> fire days",
+    "tip.period": "Average {from}–{to}: <b>{v}</b> fire days per year",
+    "tip.click": "Click to see the history of this place",
+
+    "cp.title": "History of this place",
+    "cp.square": "~27 km square",
+    "cp.avg": "Yearly average",
+    "cp.peak": "Worst year",
+    "cp.days": "{v} days",
+    "cp.note": "Fire days per year · *2026 only through October",
+    "cp.btn": "Show only this place",
+    "cp.spark.aria": "Fire days per year in this place",
+
+    "warn.outside": "Part of the area is outside Bolivia: only what is inside the country is counted.",
+    "warn.empty": "No fire has been recorded in the chosen area. Try a larger area.",
+    "warn.small": "The area is very small: numbers change a lot from month to month, so read them with care.",
+    "warn.initError": "Error loading data: ",
+
+    "sum.aria": "Summary and charts",
+    "sum.unit": "fire days",
+    "sum.info.title": "What does it mean?",
+    "sum.less": "Less fire",
+    "sum.normal": "Normal:",
+    "sum.more": "More fire",
+    "sum.info.html": "<b>What is a “fire day”?</b> We split Bolivia into squares about 27 km wide. Each square adds 1 for every day the satellite saw fire in it, and here all the squares in the area are added up. It measures how much fire there was and for how long: <b>it is not the number of fires or the burned area</b>. “Normal” is the range covered by the middle half of the years 2003–2025 for that same month.",
+    "sum.trust.html": "Data from two NASA satellites, corrected so they can be compared · <u>see how</u>",
+    "status.high": "Higher than normal",
+    "status.low": "Lower than normal",
+    "status.normal": "Within normal",
+    "sum.typical": "a typical {month}",
+    "sum.same": "Practically the same as {typical}.",
+    "sum.times": "{x} times the fire of {typical}.",
+    "sum.more.pct": "{pct}% more than {typical}.",
+    "sum.less.pct": "{pct}% less than {typical}.",
+    "sum.noFireTypical": "In {typical} there is almost no fire in this area.",
+    "sum.none": "No fire detected, same as in {typical}.",
+    "sum.range": " Normal for this month is between {a} and {b}.",
+    "sum.provisional": " Provisional data.",
+    "sum.sr": "{month} {year}, {zone}: {v} fire days. {status}. {sentence}",
+
+    "tabs.aria": "Charts",
+    "tab.calendar": "Calendar",
+    "tab.series": "Trend",
+    "tab.seasonal": "Is it normal?",
+    "tab.ranking": "Worst years",
+    "tab.ml": "Forecast (technical)",
+    "view.calendar.title": "Fire calendar",
+    "view.calendar.help": "Each row is a year and each column a month. Darker = more fire. Click a month to see it above and on the map.",
+    "view.series.title": "Month-by-month trend",
+    "view.series.help": "The line goes up when there is more fire. Use the mouse wheel or the bar below to zoom in.",
+    "view.seasonal.title": "Was {year} normal?",
+    "view.seasonal.help": "Bars = that year. Grey band = normal. Orange bar: more fire than normal; green: less; grey: normal.",
+    "view.ranking.title": "Years and months with the most fire",
+    "view.ranking.help": "Click a row to see that moment above and on the map.",
+    "view.ml.title": "Forecast to 2030 with a statistical model",
+    "view.ml.help": "Technical section for specialists: how well fire can be anticipated from each place's history.",
+
+    "cmp.check": "Show the correction between satellites",
+    "cmp.legend.aria": "Chart lines",
+    "series.final": "Final value (corrected)",
+    "series.days": "Fire days",
+    "series.modis": "Older satellite (MODIS)",
+    "series.viirsRaw": "Newer satellite, uncorrected (VIIRS)",
+    "series.viirsCorr": "Newer satellite, corrected",
+    "series.area.both": "Both satellites at once",
+    "series.area.new": "Newer satellite only",
+    "trust.why": "<b>Why correct it?</b> The newer satellite (VIIRS) sees smaller fires than the older one (MODIS), so it counts more even when there is the same fire. To compare all years, its data are adjusted to the older satellite's scale. ",
+    "trust.noData": "This area does not have enough data from the years with both satellites to check the adjustment.",
+    "trust.check": "<b>Check</b> ({scope}): uncorrected, the newer satellite counted <b>{raw}</b> relative to the older one; after correction, the difference is <b>{harm}</b>.",
+    "trust.scope.all": "2017–2021 (years not used to compute the correction)",
+    "trust.scope.region": "2012–2021 in this region",
+    "trust.scope.custom": "2012–2021 in this area",
+    "pct": "{v}%",
+
+    "seasonal.typical": "Typical month",
+    "seasonal.range": "Normal range",
+    "seasonal.noData": "No data yet",
+    "seasonal.days": "<b>{v}</b> fire days",
+    "seasonal.normal": "Normal: between {a} and {b}",
+
+    "cal.more": "More fire",
+    "cal.less": "Less fire",
+    "cal.provisional": "Provisional data",
+    "chart.calendar.aria": "Fire calendar by year and month",
+    "chart.series.aria": "Monthly trend of fire days",
+    "chart.seasonal.aria": "Months of the selected year compared with normal",
+
+    "rank.years": "The 5 years with the most fire",
+    "rank.months": "The 5 months with the most fire",
+    "rank.noData": "No data",
+    "rank.yearTimes": "{x} times an average year",
+    "rank.monthTimes": "{x} times the typical for that month",
+    "rank.note": "Numbers in fire days, between {from} and {to}. *2026 only includes January–October (provisional).",
+
+    "footer.links": "Data: <a href=\"https://www.earthdata.nasa.gov/data/tools/firms\" target=\"_blank\" rel=\"noopener\">NASA FIRMS</a> · <a href=\"docs/METODO.md\" target=\"_blank\" rel=\"noopener\">Method (Spanish)</a> · <a href=\"REFERENCES.md\" target=\"_blank\" rel=\"noopener\">References</a> · <a href=\"LICENSE\" target=\"_blank\" rel=\"noopener\">Apache 2.0 License</a>",
+    "footer.note": "NASA Space Apps Challenge 2026 · not officially sponsored by NASA · 2026 is provisional (January–October)",
+
+    "ml.missing": "data/processed/ml_bundle.js was not found. Run: python scripts/ml_model.py",
+    "ml.ys": ["1 year\n(reference)", "2 years", "3 years", "4–5 years", "6+ years or\nno record"],
+    "ml.f.normal": "<b>It is not a normal distribution.</b> {zeros}% of cell-months are 0 and the variance is {ratio} times the mean. We use a <b>Tweedie</b> model: the variance grows as a power of the mean, Var ≈ {phi} · mean<sup>{p}</sup> (p estimated from the data).",
+    "ml.f.persist": "<b>Persistence:</b> if a cell burned last year, the odds of fire are <b>{x}×</b> higher than in a cell with 6+ years without fire, even after accounting for its historical normal.",
+    "ml.f.persistNo": "<b>Persistence:</b> the effect of having burned last year is inconclusive (95% CI crosses 1).",
+    "ml.f.accum": "<b>Accumulation:</b> when fire returns after 6+ years without fire, it lasts/spreads over <b>{pct}%</b> more cell-days than in a cell that burned last year.",
+    "ml.f.accumNo": "<b>Accumulation:</b> no clear increase in intensity was found after years without fire.",
+    "ml.f.pred": "<b>Cell by cell</b>, the Tweedie model reduces deviance by {gain}% compared with climatology ({t0}–{t1}). <b>Multi-year projection (test {b0}–{b1} without seeing those years):</b> {inside}/{n} years fell inside the 80% band; median error {mm}% vs. {mc}% for climatology. ",
+    "ml.f.predWorse": "For the <b>annual total</b>, climatology is more accurate: use the projection as a <b>plausible range</b>, not an exact figure.",
+    "ml.f.predBetter": "The projection beats climatology for the annual total.",
+    "ml.model.clim": "Cell climatology (baseline)",
+    "ml.model.nb": "Negative binomial (GLM)",
+    "ml.model.tweedie": "Tweedie (GLM, variance ∝ mean^p)",
+    "ml.model.hgb": "Poisson gradient boosting",
+    "ml.th.model": "Model (1-year-ahead forecast, cell × month)",
+    "ml.th.dev": "Deviance ↓",
+    "ml.th.dev.title": "Error for counts; lower is better",
+    "ml.th.auc": "AUC ↑",
+    "ml.th.auc.title": "Ability to tell cell-months with and without fire apart; higher is better",
+    "ml.th.mae": "Monthly total error ↓",
+    "ml.th.mae.title": "Mean absolute error of Bolivia's monthly total (cell-days)",
+    "ml.th.bias": "Total bias",
+    "ml.block.test": "Out-of-sample test {t0}–{t1} (MODIS Aqua)",
+    "ml.block.fc": "Forecast {y} Jan–Oct (provisional, harmonized VIIRS)",
+    "ml.bt.head": "Projection backtest (Bolivia)",
+    "ml.bt.obs": "Observed",
+    "ml.bt.med": "Simulated median",
+    "ml.bt.band": "80% band (P10–P90)",
+    "ml.bt.clim": "Climatology",
+    "ml.eff.title": "Years since the last fire in the cell",
+    "ml.eff.occ": "Is there fire? (odds ratio)",
+    "ml.eff.int": "If there is fire, how much? (rate ratio)",
+    "ml.eff.ci": "95% CI",
+    "ml.eff.ref": "(reference)",
+    "ml.eff.note": "1 = same as a cell that burned last year",
+    "ml.pow.title": "Variance (vertical axis) ∝ mean^p  ·  p = {p}",
+    "ml.pow.tip": "mean {m} · variance {v}",
+    "ml.pow.x": "expected mean (cell-days)",
+    "ml.pow.groups": "Groups",
+    "ml.pow.fit": "Power fit",
+    "ml.pow.poisson": "Poisson (var = mean)",
+    "ml.proj.custom": "Drawn area (mean only; bands only for predefined regions)",
+    "ml.proj.title": "Projection to {end} · {area} (fire days per year)",
+    "ml.proj.obs": "Observed (harmonized)",
+    "ml.proj.median": "Simulated median",
+    "ml.proj.mean": "Simulated mean",
+    "ml.proj.b80": "80% band",
+    "ml.proj.b90": "90% band",
+    "ml.proj.avg": "2003–2025 average",
+    "ml.proj.tip.obs": "Observed: <b>{v}</b> fire days",
+    "ml.proj.tip.median": "Median: <b>{v}</b>",
+    "ml.proj.tip.mean": "Simulated mean: <b>{v}</b>",
+    "ml.proj.tip.partial": "{y}: Jan–{m} observed + rest simulated",
+    "ml.year.label": "PROJECTED YEAR ON THE MAP",
+    "ml.year.btn": "Show on the map",
+    "ml.aria.proj": "Observed annual series and projection to 2030 with uncertainty bands",
+    "ml.aria.eff": "Effect of years since the last fire on occurrence and intensity",
+    "ml.aria.pow": "Power relationship between the mean and the variance of the fire count",
+    "ml.note": "Unit: 0.25° cell × month. Variables: the cell's historical normal, fire in the same month of the previous year, years since the last fire and fire in neighboring cells, all using data <b>only up to the previous year</b>. The projection chains {n} simulations year by year (what is simulated for one year becomes the history for the next) and includes the randomness of fire, the uncertainty of the coefficients and a shared “year effect” (dry or wet years). <b>It assumes climate and land use behave as in 2003–2025</b>; it does not anticipate extreme droughts or policy changes. Cell-days measure fire duration/extent, not burned area. Details in docs/METODO.md (Spanish)."
+  }
+};
+
+const LANG_STORAGE_KEY = "pixfire.lang";
+
+/** Idioma inicial: el guardado por el usuario o español. */
+let LANG = (() => {
+  try {
+    const saved = localStorage.getItem(LANG_STORAGE_KEY);
+    if (saved && I18N[saved]) return saved;
+  } catch (e) {
+    /* localStorage bloqueado: se usa el idioma por defecto */
+  }
+  return "es";
+})();
+
+/** Devuelve el texto de una clave en el idioma actual, reemplazando {variables}. */
+function t(key, vars) {
+  let s = I18N[LANG][key];
+  if (s === undefined) s = I18N.es[key];
+  if (s === undefined) return key;
+  if (typeof s !== "string" || !vars) return s;
+  return s.replace(/\{(\w+)\}/g, (m, name) => (vars[name] !== undefined ? vars[name] : m));
+}
+
+/** Aplica los textos fijos del HTML (atributos data-i18n*). */
+function applyStaticI18n() {
+  document.documentElement.lang = LANG;
+  document.title = t("doc.title");
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => {
+    el.innerHTML = t(el.dataset.i18nHtml);
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+    el.title = t(el.dataset.i18nTitle);
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach((el) => {
+    el.setAttribute("aria-label", t(el.dataset.i18nAria));
+  });
+  document.querySelectorAll(".lang-btn").forEach((b) => {
+    const active = b.dataset.lang === LANG;
+    b.classList.toggle("active", active);
+    b.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+/** Cambia el idioma, lo recuerda y avisa a la app para que redibuje. */
+function setLang(lang) {
+  if (!I18N[lang] || lang === LANG) return;
+  LANG = lang;
+  try {
+    localStorage.setItem(LANG_STORAGE_KEY, lang);
+  } catch (e) {
+    /* sin almacenamiento: el cambio vale solo para esta visita */
+  }
+  applyStaticI18n();
+  if (typeof window.onLanguageChange === "function") window.onLanguageChange();
+}
