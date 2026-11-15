@@ -647,18 +647,10 @@ const I18N = {
   }
 };
 
-const LANG_STORAGE_KEY = "pixfire.lang";
+const LANG_STORAGE_KEY = "pixfire.lang.en";
 
-/** Idioma inicial: el guardado por el usuario o español. */
-let LANG = (() => {
-  try {
-    const saved = localStorage.getItem(LANG_STORAGE_KEY);
-    if (saved && I18N[saved]) return saved;
-  } catch (e) {
-    /* localStorage bloqueado: se usa el idioma por defecto */
-  }
-  return "es";
-})();
+/** Idioma inicial: inglés por defecto al iniciar la aplicación. */
+let LANG = "en";
 
 /** Devuelve el texto de una clave en el idioma actual, reemplazando {variables}. */
 // noinspection JSUnusedGlobalSymbols,SpellCheckingInspection
