@@ -338,12 +338,20 @@ function initMap() {
       map.on(L.Draw.Event.CREATED, (e) => {
         drawnItems.clearLayers();
         drawnItems.addLayer(e.layer);
+        e.layer.options.interactive = false;
         state.customPolygon = e.layer.toGeoJSON();
         state.preset = "custom";
         const sel = document.getElementById("presetRegion");
         if (sel) sel.value = "custom";
         recomputeAoiSelection();
       });
+
+      // Solo permite editar/eliminar el área cuando se usa la herramienta correspondiente;
+      // así el resto del tiempo no intercepta el hover ni el clic sobre las celdas.
+      map.on(L.Draw.Event.EDITSTART, () => setAoiInteractive(true));
+      map.on(L.Draw.Event.EDITSTOP, () => setAoiInteractive(false));
+      map.on(L.Draw.Event.DELETESTART, () => setAoiInteractive(true));
+      map.on(L.Draw.Event.DELETESTOP, () => setAoiInteractive(false));
 
       map.on(L.Draw.Event.DRAWSTART, () => {
         isDrawing = true;
@@ -753,12 +761,21 @@ function selectSingleCell(cell) {
   applyCustomBbox(cell.lon - half + margin, cell.lat - half + margin, cell.lon + half - margin, cell.lat + half - margin);
 }
 
+/** Activa o desactiva los clics sobre el área de interés (para que no tape las celdas). */
+function setAoiInteractive(interactive) {
+  if (!drawnItems) return;
+  drawnItems.eachLayer((layer) => {
+    layer.options.interactive = interactive;
+  });
+}
+
 /** Usa un rectángulo (lon/lat mínimos y máximos) como área de interés personalizada. */
 function applyCustomBbox(minLon, minLat, maxLon, maxLat) {
   const layer = L.rectangle([[minLat, minLon], [maxLat, maxLon]], {
     color: "#0891b2",
     weight: 2,
-    fillOpacity: 0.08
+    fillOpacity: 0.08,
+    interactive: false
   });
   if (drawnItems) {
     drawnItems.clearLayers();
