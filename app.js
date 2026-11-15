@@ -10,8 +10,8 @@
  *   - data/processed/validation.csv
  *   - data/processed/data_bundle.js (fallback autónomo compatible con file:// y servidor local)
  */
-/* global L, turf, echarts, t, setLang, applyStaticI18n */
-// noinspection JSUnresolvedReference,JSUnusedGlobalSymbols
+/* global L, turf, echarts, t, setLang, applyStaticI18n, PIXFIRE_DATA, PIXFIRE_GRIDS, PIXFIRE_ML */
+// noinspection JSUnresolvedReference,JSUnusedGlobalSymbols,SpellCheckingInspection
 
 // Textos según el idioma (i18n.js). Se recalculan al cambiar ES/EN en refreshLangConstants().
 let MONTH_NAMES = t("months.short");
@@ -332,6 +332,7 @@ function initMap() {
     return div;
   };
   legend.addTo(map);
+  // noinspection JSUnresolvedReference
   drawnItems = new L.FeatureGroup().addTo(map);
 
   if (typeof L.Control !== "undefined" && typeof L.Control.Draw !== "undefined") {
@@ -339,7 +340,9 @@ function initMap() {
 
     if (typeof L.Draw !== "undefined" && L.Draw.Event) {
       map.on(L.Draw.Event.CREATED, (e) => {
+        // noinspection JSUnresolvedReference
         drawnItems.clearLayers();
+        // noinspection JSUnresolvedReference
         drawnItems.addLayer(e.layer);
         e.layer.options.interactive = false;
         state.customPolygon = e.layer.toGeoJSON();
@@ -374,6 +377,7 @@ function initMap() {
 function buildLayersControl() {
   if (!map || !baseLayers) return;
   if (layersControl) map.removeControl(layersControl);
+  // noinspection JSUnresolvedReference
   layersControl = L.control
     .layers({ [t("map.layer.light")]: baseLayers.light, [t("map.layer.sat")]: baseLayers.sat }, null, { position: "topleft" })
     .addTo(map);
@@ -386,8 +390,10 @@ function buildDrawControl() {
     const d = L.drawLocal;
     d.draw.toolbar.buttons.polygon = t("draw.polygon");
     d.draw.toolbar.buttons.rectangle = t("draw.rectangle");
+    // noinspection JSUnresolvedReference
     d.draw.toolbar.actions.text = t("draw.cancel");
     d.draw.toolbar.finish.text = t("draw.finish");
+    // noinspection JSUnresolvedReference
     d.draw.toolbar.undo.text = t("draw.undo");
     d.draw.handlers.polygon.tooltip.start = t("draw.poly.start");
     d.draw.handlers.polygon.tooltip.cont = t("draw.poly.cont");
@@ -398,8 +404,11 @@ function buildDrawControl() {
     d.edit.toolbar.buttons.editDisabled = t("draw.editDisabled");
     d.edit.toolbar.buttons.remove = t("draw.remove");
     d.edit.toolbar.buttons.removeDisabled = t("draw.removeDisabled");
+    // noinspection JSUnresolvedReference
     d.edit.toolbar.actions.save.text = t("draw.save");
+    // noinspection JSUnresolvedReference
     d.edit.toolbar.actions.cancel.text = t("draw.cancel");
+    // noinspection JSUnresolvedReference
     d.edit.toolbar.actions.clearAll.text = t("draw.clearAll");
   }
   if (drawControl) map.removeControl(drawControl);
@@ -557,14 +566,19 @@ function renderMapGrid() {
         { weight: unselWeight }
       );
       if (cs >= 0.10) {
+        // noinspection JSUnresolvedReference
         rect.bindTooltip(() => cellTooltipHtml(cell), { sticky: true });
       } else {
+        // noinspection JSUnresolvedReference
         rect.on("mouseover", () => {
+          // noinspection JSUnresolvedReference
           if (!rect.getTooltip()) rect.bindTooltip(() => cellTooltipHtml(cell), { sticky: true }).openTooltip();
         });
       }
+      // noinspection JSUnresolvedReference
       rect.on("click", (e) => openCellPopup(cell, e.latlng));
       cellLayers.set(cell.cellId, rect);
+      // noinspection JSUnresolvedReference
       gridLayerGroup.addLayer(rect);
     }
 
@@ -750,10 +764,12 @@ function openCellPopup(cell, latlng) {
     <button type="button" class="btn-action primary cp-btn">${t("cp.btn")}</button>`;
 
   div.querySelector(".cp-btn").addEventListener("click", () => {
+    // noinspection JSUnresolvedReference
     map.closePopup();
     selectSingleCell(cell);
   });
 
+  // noinspection JSUnresolvedReference
   L.popup({ maxWidth: 260 }).setLatLng(latlng).setContent(div).openOn(map);
 }
 
@@ -1094,9 +1110,12 @@ function renderSeriesChart() {
   if (!chartSeries) {
     chartSeries = echarts.init(dom);
     // Clic en cualquier punto del gráfico → elegir ese mes
+    // noinspection JSUnresolvedReference
     chartSeries.getZr().on("click", (e) => {
       const px = [e.offsetX, e.offsetY];
+      // noinspection JSUnresolvedReference
       if (!chartSeries.containPixel("grid", px)) return;
+      // noinspection JSUnresolvedReference
       const idx = chartSeries.convertFromPixel({ seriesIndex: 0 }, px)[0];
       const label = chartSeries._labels && chartSeries._labels[idx];
       if (!label) return;
@@ -1199,6 +1218,7 @@ function renderSeriesChart() {
       ...TOOLTIP_STYLE,
       trigger: "axis",
       formatter: (items) => {
+        // noinspection JSUnresolvedReference
         let html = `<div style="font-weight:700;margin-bottom:3px">${prettyYm(items[0].axisValue)}</div>`;
         items.forEach((it) => {
           if (it.value === null || it.value === undefined) return;
@@ -1282,6 +1302,7 @@ function renderSeasonalChart() {
       ...TOOLTIP_STYLE,
       trigger: "axis",
       formatter: (items) => {
+        // noinspection JSUnresolvedReference
         const m = items[0].dataIndex + 1;
         const st = hist[m];
         const b = state.currentSeriesByYm.get(ymKey(state.focusYear, m));
@@ -1591,6 +1612,7 @@ const ML_YS_TERMS = ["ys_2", "ys_3", "ys_4", "ys_6"];
 const ML_COLORS = { occurrence: "#0f766e", intensity: "#ea580c", obs: "#334155", band: "#ea580c", clim: "#64748b" };
 
 function getMl() {
+  // noinspection JSUnresolvedReference
   return window.PIXFIRE_ML && window.PIXFIRE_ML.cells_projection ? window.PIXFIRE_ML : null;
 }
 
@@ -1649,6 +1671,7 @@ function initMlControls() {
 }
 
 function mlTerm(part, term) {
+  // noinspection JSUnresolvedReference
   return getMl().effects[part].terms.find((t) => t.term === term);
 }
 
@@ -1752,6 +1775,7 @@ function renderMlEffectsChart(ml) {
   const series = [];
   [["occurrence", t("ml.eff.occ"), -5], ["intensity", t("ml.eff.int"), 5]]
     .forEach(([part, name, dx]) => {
+      // noinspection JSUnresolvedReference
       const terms = ML_YS_TERMS.map((x) => ml.effects[part].terms.find((item) => item.term === x));
       const color = ML_COLORS[part];
       series.push({
@@ -1763,6 +1787,7 @@ function renderMlEffectsChart(ml) {
       series.push({
         name, type: "custom", color, z: 2, tooltip: { show: false },
         data: terms.map((x, i) => [i + 1, x.ci_low, x.ci_high]),
+        // noinspection JSUnusedGlobalSymbols
         renderItem: (_params, api) => {
           const lo = api.coord([api.value(0), api.value(1)]);
           const hi = api.coord([api.value(0), api.value(2)]);
@@ -1790,6 +1815,7 @@ function renderMlEffectsChart(ml) {
       ...TOOLTIP_STYLE,
       trigger: "axis",
       formatter: (ps) => {
+        // noinspection JSUnresolvedReference
         const i = ps[0].dataIndex;
         let html = `<b>${ysLabels[i].replace("\n", " ")}</b>`;
         ps.filter((p) => p.seriesType === "line").forEach((p) => {
@@ -1912,6 +1938,7 @@ function renderMlProjectionChart(ml) {
     if (y === lastFull) return hist[idx(y)];
     const k = projYears.indexOf(y);
     if (k < 0) return null;
+    // noinspection JSUnresolvedReference
     return Number((projRows ? projRows[k].p50 : meanByYear[k]).toFixed(1));
   });
 
@@ -1952,6 +1979,7 @@ function renderMlProjectionChart(ml) {
       ...TOOLTIP_STYLE,
       trigger: "axis",
       formatter: (ps) => {
+        // noinspection JSUnresolvedReference
         const y = years[ps[0].dataIndex];
         const k = projYears.indexOf(y);
         let html = `<b>${y}</b>`;
@@ -2152,6 +2180,7 @@ function renderHarmFactorsChart(meta) {
     tooltip: {
       ...TOOLTIP_STYLE,
       trigger: "axis",
+      // noinspection JSUnresolvedReference
       formatter: (ps) => `<b>${MONTH_FULL_NAMES[ps[0].dataIndex]}</b><br>` +
         t("harm.k.tip", { k: fmtNum(ps[0].value, 3), inv: fmtNum(1 / ps[0].value, 1) })
     },
@@ -2209,6 +2238,7 @@ function renderHarmValidationChart() {
       ...TOOLTIP_STYLE,
       trigger: "axis",
       formatter: (items) => {
+        // noinspection JSUnresolvedReference
         let html = `<b>${prettyYm(items[0].axisValue)}</b>`;
         items.forEach((it) => {
           if (it.value === null || it.value === undefined) return;

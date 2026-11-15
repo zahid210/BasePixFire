@@ -377,6 +377,7 @@ select:hover {
   justify-content: center;
 }
 
+/*noinspection CssUnusedSymbol*/
 .play-btn.playing {
   background-color: var(--fire-flame);
   border-color: var(--fire-flame);
@@ -415,6 +416,7 @@ select:hover {
   font-weight: 600;
 }
 
+/*noinspection CssUnusedSymbol*/
 .map-legend {
   background: rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(10px);
@@ -430,17 +432,20 @@ select:hover {
   min-width: 150px;
 }
 
+/*noinspection CssUnusedSymbol*/
 .map-legend .legend-when {
   font-size: 13px;
   font-weight: 700;
 }
 
+/*noinspection CssUnusedSymbol*/
 .map-legend .legend-title {
   font-size: 11px;
   color: var(--text-muted);
   margin-bottom: 3px;
 }
 
+/*noinspection CssUnusedSymbol*/
 .map-legend .legend-row {
   display: flex;
   align-items: center;
@@ -499,6 +504,7 @@ select:hover {
 }
 
 /* Popup al hacer clic en un cuadro */
+/*noinspection CssUnusedSymbol*/
 .cell-popup {
   font-family: var(--font-main), sans-serif;
   font-size: 12px;
@@ -506,23 +512,27 @@ select:hover {
   width: 232px;
 }
 
+/*noinspection CssUnusedSymbol*/
 .cell-popup .cp-title {
   font-size: 14px;
   font-weight: 700;
 }
 
+/*noinspection CssUnusedSymbol*/
 .cell-popup .cp-sub {
   font-size: 11px;
   color: var(--text-muted);
   margin-bottom: 8px;
 }
 
+/*noinspection CssUnusedSymbol*/
 .cell-popup .spark {
   display: block;
   background: var(--bg-subtle);
   border-radius: 4px;
 }
 
+/*noinspection CssUnusedSymbol*/
 .cell-popup .cp-axis {
   display: flex;
   justify-content: space-between;
@@ -530,6 +540,7 @@ select:hover {
   color: var(--text-muted);
 }
 
+/*noinspection CssUnusedSymbol*/
 .cell-popup .cp-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -537,18 +548,21 @@ select:hover {
   margin: 8px 0 4px;
 }
 
+/*noinspection CssUnusedSymbol*/
 .cell-popup .cp-stats span {
   display: block;
   font-size: 11px;
   color: var(--text-muted);
 }
 
+/*noinspection CssUnusedSymbol*/
 .cell-popup .cp-note {
   font-size: 11px;
   color: var(--text-muted);
   margin-bottom: 8px;
 }
 
+/*noinspection CssUnusedSymbol*/
 .cell-popup .cp-btn {
   width: 100%;
   justify-content: center;
@@ -600,11 +614,13 @@ select:hover {
   white-space: nowrap;
 }
 
+/*noinspection CssUnusedSymbol*/
 .status-pill.high {
   background-color: #ffedd5;
   color: #9a3412;
 }
 
+/*noinspection CssUnusedSymbol*/
 .status-pill.low {
   background-color: #ccfbf1;
   color: #115e59;
@@ -1057,6 +1073,7 @@ select:hover {
   letter-spacing: 0.03em;
 }
 
+/*noinspection CssUnusedSymbol*/
 .ml-table .ml-best {
   font-weight: 700;
   color: var(--color-teal);
@@ -1207,6 +1224,7 @@ select:hover {
   font-size: 11px;
 }
 
+/*noinspection CssUnusedSymbol*/
 .harm-result.bad {
   border-left-color: var(--color-alert);
 }

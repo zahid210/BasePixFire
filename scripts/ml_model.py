@@ -1,3 +1,4 @@
+# noinspection SpellCheckingInspection
 """
 ml_model.py — Modelo de riesgo de fuego por celda y proyección hasta 2030.
 

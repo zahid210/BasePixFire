@@ -10,6 +10,7 @@
  * Si una clave falta en inglés, se muestra la versión en español.
  */
 
+// noinspection SpellCheckingInspection,JSUnusedGlobalSymbols
 const I18N = {
   es: {
     "locale": "es-BO",
@@ -638,6 +639,7 @@ let LANG = (() => {
 })();
 
 /** Devuelve el texto de una clave en el idioma actual, reemplazando {variables}. */
+// noinspection JSUnusedGlobalSymbols,SpellCheckingInspection
 function t(key, vars) {
   let s = I18N[LANG][key];
   if (s === undefined) s = I18N.es[key];
@@ -647,6 +649,7 @@ function t(key, vars) {
 }
 
 /** Aplica los textos fijos del HTML (atributos data-i18n*). */
+// noinspection JSUnusedGlobalSymbols,SpellCheckingInspection
 function applyStaticI18n() {
   document.documentElement.lang = LANG;
   document.title = t("doc.title");
@@ -670,6 +673,7 @@ function applyStaticI18n() {
 }
 
 /** Cambia el idioma, lo recuerda y avisa a la app para que redibuje. */
+// noinspection JSUnusedGlobalSymbols,SpellCheckingInspection
 function setLang(lang) {
   if (!I18N[lang] || lang === LANG) return;
   LANG = lang;

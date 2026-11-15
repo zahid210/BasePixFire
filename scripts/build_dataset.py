@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# noinspection SpellCheckingInspection
 """
 Pipeline de armonización de focos de calor MODIS (Aqua) y VIIRS (Suomi-NPP).
 

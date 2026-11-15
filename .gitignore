@@ -1,3 +1,4 @@
+# noinspection SpellCheckingInspection
 # Datos crudos pesados (FIRMS CSVs), conservando los 2 ZIP de Archive 2026 (~2,1 MB) para reproducibilidad completa
 data/raw/*
 !data/raw/2026/

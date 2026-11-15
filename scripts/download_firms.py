@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# noinspection SpellCheckingInspection
 """
 Descarga los archivos CSV anuales por país de NASA FIRMS (2003-2025).
 Reutiliza archivos ya existentes en data/raw/ para evitar descargas repetidas.

@@ -1,3 +1,4 @@
+<!--suppress SpellCheckingInspection -->
 # PixFire — Armonización de Focos de Calor MODIS & VIIRS (2003–2026)
 
 **Proyecto para el NASA International Space Apps Challenge 2026**  
