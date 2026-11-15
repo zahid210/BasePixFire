@@ -1292,17 +1292,18 @@ function renderSeriesChart() {
       }
     : undefined;
 
+  const isBefore = state.harmMode === "before";
   /** @type {Array<Object>} */
   const series = [];
   series.push({
     name: compare ? t("series.final") : t("series.days"),
     type: "line",
-    data: rows.map((r) => round1(r.harm)),
+    data: rows.map((r) => round1(!compare && isBefore ? r.raw : r.harm)),
     showSymbol: false,
     z: 5,
-    lineStyle: { width: 2.2, color: "#0f172a" },
-    itemStyle: { color: "#0f172a" },
-    areaStyle: compare ? undefined : { color: "rgba(234, 88, 12, 0.12)" },
+    lineStyle: { width: 2.2, color: !compare && isBefore ? "#b91c1c" : "#0f172a" },
+    itemStyle: { color: !compare && isBefore ? "#b91c1c" : "#0f172a" },
+    areaStyle: compare ? undefined : { color: isBefore ? "rgba(185, 28, 28, 0.14)" : "rgba(234, 88, 12, 0.12)" },
     markArea: {
       silent: true,
       label: { fontSize: 10, color: "#475569", position: "insideTop" },
@@ -1399,6 +1400,7 @@ function renderSeasonalChart() {
 
   const hist = computeHistoricalStatsByMonth();
   const BAR_COLORS = { high: "#ea580c", low: "#0f766e", normal: "#94a3b8" };
+  const isBefore = state.harmMode === "before";
   const p25 = [];
   const band = [];
   const median = [];
@@ -1415,10 +1417,11 @@ function renderSeasonalChart() {
       current.push({ value: null });
       continue;
     }
-    const color = BAR_COLORS[classifyVsNormal(bucket.harm, st).key];
+    const bVal = isBefore ? bucket.raw : bucket.harm;
+    const color = BAR_COLORS[classifyVsNormal(bVal, st).key];
     const isFocus = m === state.focusMonth;
     current.push({
-      value: round1(bucket.harm),
+      value: round1(bVal),
       itemStyle: { color, borderColor: isFocus ? "#0f172a" : color, borderWidth: isFocus ? 2 : 0 }
     });
   }
@@ -1435,10 +1438,11 @@ function renderSeasonalChart() {
         const m = items[0].dataIndex + 1;
         const st = hist[m];
         const b = state.currentSeriesByYm.get(ymKey(state.focusYear, m));
-        const status = b ? classifyVsNormal(b.harm, st) : null;
+        const bVal = b ? (isBefore ? b.raw : b.harm) : 0;
+        const status = b ? classifyVsNormal(bVal, st) : null;
         return `
           <div style="font-weight:700;margin-bottom:3px">${MONTH_FULL_NAMES[m - 1]} ${state.focusYear}</div>
-          <div>${b ? t("seasonal.days", { v: fmtDays(b.harm) }) : t("seasonal.noData")}</div>
+          <div>${b ? t("seasonal.days", { v: fmtDays(bVal) }) : t("seasonal.noData")}</div>
           <div>${t("seasonal.normal", { a: fmtDays(st.p25), b: fmtDays(st.p75) })}</div>
           ${status ? `<div style="margin-top:3px;color:${status.color}">${status.label}</div>` : ""}`;
       }
@@ -1666,14 +1670,17 @@ function renderRanking() {
 
   const hist = computeHistoricalStatsByMonth();
   const rows = getSeriesRowsInRange();
+  const isBefore = state.harmMode === "before";
+  const rowVal = (r) => (isBefore ? r.raw : r.harm);
 
   // Totales por año (2026 es parcial: solo ene–oct)
   const byYear = new Map();
   rows.forEach((r) => {
+    const v = rowVal(r);
     const cur = byYear.get(r.year) || { total: 0, peakMonth: 1, peakVal: -1 };
-    cur.total += r.harm;
-    if (r.harm > cur.peakVal) {
-      cur.peakVal = r.harm;
+    cur.total += v;
+    if (v > cur.peakVal) {
+      cur.peakVal = v;
       cur.peakMonth = r.month;
     }
     byYear.set(r.year, cur);
@@ -1683,7 +1690,7 @@ function renderRanking() {
   const fullYears = allYears.filter((y) => y.year <= 2025);
   const avgYear = fullYears.length ? fullYears.reduce((a, y) => a + y.total, 0) / fullYears.length : 0;
 
-  const topMonths = [...rows].sort((a, b) => b.harm - a.harm).slice(0, 5);
+  const topMonths = [...rows].sort((a, b) => rowVal(b) - rowVal(a)).slice(0, 5);
 
   const yearsHtml = topYears
     .map((y, i) =>
@@ -1700,13 +1707,14 @@ function renderRanking() {
 
   const monthsHtml = topMonths
     .map((r, i) => {
+      const v = rowVal(r);
       const med = hist[r.month].median;
       return rankRowHtml(
         i + 1,
         `${MONTH_NAMES[r.month - 1]} ${r.year}`,
-        r.harm,
-        topMonths[0].harm,
-        med > 0 ? t("rank.monthTimes", { x: fmtNum(r.harm / med, 1) }) : "",
+        v,
+        rowVal(topMonths[0]),
+        med > 0 ? t("rank.monthTimes", { x: fmtNum(v / med, 1) }) : "",
         `data-year="${r.year}" data-month="${r.month}"`
       );
     })
@@ -2464,36 +2472,52 @@ function renderCalendarChart() {
   chartCalendar._yearsList = years;
 
   const hist = computeHistoricalStatsByMonth();
-  const data = [];
-  let maxVal = 0;
   const isBefore = state.harmMode === "before";
+  let maxVal = 0;
 
-  years.forEach((yStr, yIdx) => {
+  years.forEach((yStr) => {
     const y = parseInt(yStr, 10);
     for (let m = 1; m <= 12; m++) {
       if (y === 2026 && m > 10) continue;
       const bucket = state.currentSeriesByYm.get(ymKey(y, m));
       const harmVal = bucket ? bucket.harm : 0;
-      const val = bucket ? (isBefore ? bucket.raw : bucket.harm) : 0;
       if (harmVal > maxVal) maxVal = harmVal;
-      data.push([m - 1, yIdx, round1(val)]);
+    }
+  });
+  const scaleMax = maxVal > 0 ? round1(maxVal) : 100;
+
+  const data = [];
+  years.forEach((yStr, yIdx) => {
+    const y = parseInt(yStr, 10);
+    for (let m = 1; m <= 12; m++) {
+      if (y === 2026 && m > 10) continue;
+      const bucket = state.currentSeriesByYm.get(ymKey(y, m));
+      const val = bucket ? (isBefore ? bucket.raw : bucket.harm) : 0;
+      // Limita al tope de la escala armonizada para que ECharts pinte en el rojo más oscuro
+      // los meses que superan el máximo histórico armonizado sin dejarlos fuera de rango (gris).
+      data.push([m - 1, yIdx, Math.min(round1(val), scaleMax)]);
     }
   });
 
   const option = {
     backgroundColor: "#ffffff",
+    animation: false,
     tooltip: {
       ...TOOLTIP_STYLE,
       position: "top",
       formatter: (p) => {
         const mNum = p.value[0] + 1;
         const year = parseInt(years[p.value[1]], 10);
-        const val = p.value[2];
-        const status = classifyVsNormal(val, hist[mNum]);
         const b = state.currentSeriesByYm.get(ymKey(year, mNum));
+        const val = b ? round1(isBefore ? b.raw : b.harm) : p.value[2];
+        const status = classifyVsNormal(val, hist[mNum]);
+        const cmp = isBefore && b && Math.abs(b.raw - b.harm) >= 0.5
+          ? `<div style="color:#fca5a5;font-size:10px">${t("map.harm.tip.compare", { raw: fmtDays(b.raw), harm: fmtDays(b.harm) })}</div>`
+          : "";
         return `
           <div style="font-weight:700;margin-bottom:3px">${MONTH_FULL_NAMES[mNum - 1]} ${year}</div>
           <div>${t("seasonal.days", { v: fmtDays(val) })}</div>
+          ${cmp}
           <div style="color:${status.color}">${status.label}</div>
           ${b && b.hasNrt ? `<div style='color:#94a3b8;font-size:10px'>${t("cal.provisional")}</div>` : ""}`;
       }
@@ -2517,7 +2541,7 @@ function renderCalendarChart() {
     },
     visualMap: {
       min: 0,
-      max: maxVal > 0 ? maxVal : 100,
+      max: scaleMax,
       calculable: false,
       orient: "horizontal",
       left: "center",
