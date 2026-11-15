@@ -16,11 +16,11 @@
   <!--suppress JSUnresolvedLibraryURL -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
 
-  <link rel="stylesheet" href="styles.css?v=main14" />
+  <link rel="stylesheet" href="styles.css?v=main15" />
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <defs class="playing map-legend legend-when legend-title legend-row legend-harm-tag cell-popup cp-title cp-sub spark cp-axis cp-stats cp-note cp-btn high low ml-best bad">
+    <defs class="playing map-legend legend-when legend-title legend-row legend-harm-tag legend-pa-swatch cell-popup cp-title cp-sub cp-pa-badge spark cp-axis cp-stats cp-note cp-btn high low ml-best bad">
       <symbol id="ic-download" viewBox="0 0 24 24">
         <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
       </symbol>
@@ -56,11 +56,25 @@
         <div class="tool-cell">
           <label for="presetRegion" data-i18n="top.zone">Zona</label>
           <select id="presetRegion">
-            <option value="all" selected data-i18n="zone.all">Toda Bolivia</option>
-            <option value="chiquitania" data-i18n="zone.chiquitania">Chiquitanía y Llanos</option>
-            <option value="amazonia" data-i18n="zone.amazonia">Amazonía y Beni</option>
-            <option value="andina" data-i18n="zone.andina">Andina y Valles</option>
-            <option value="custom" disabled data-i18n="zone.custom">Zona elegida en el mapa</option>
+            <optgroup label="Regions of Bolivia" data-i18n-label="zone.group.macro">
+              <option value="all" selected data-i18n="zone.all">All of Bolivia</option>
+              <option value="chiquitania" data-i18n="zone.chiquitania">Chiquitanía and Lowlands</option>
+              <option value="amazonia" data-i18n="zone.amazonia">Amazon and Beni</option>
+              <option value="andina" data-i18n="zone.andina">Andes and Valleys</option>
+            </optgroup>
+            <optgroup label="Protected Areas (SERNAP)" data-i18n-label="zone.group.pa">
+              <option value="pa_all" data-i18n="zone.pa_all">All Protected Areas (7)</option>
+              <option value="pa_san_matias" data-i18n="zone.pa_san_matias">San Matías ANMI (Pantanal/Chiquitanía)</option>
+              <option value="pa_noel_kempff" data-i18n="zone.pa_noel_kempff">Noel Kempff Mercado NP (UNESCO)</option>
+              <option value="pa_otuquis" data-i18n="zone.pa_otuquis">Otuquis Pantanal NP (Ramsar)</option>
+              <option value="pa_tipnis" data-i18n="zone.pa_tipnis">TIPNIS — Isiboro-Sécure</option>
+              <option value="pa_madidi" data-i18n="zone.pa_madidi">Madidi NP &amp; ANMI (La Paz)</option>
+              <option value="pa_kaaiya" data-i18n="zone.pa_kaaiya">Kaa-Iya del Gran Chaco NP</option>
+              <option value="pa_amboro" data-i18n="zone.pa_amboro">Amboró NP &amp; ANMI (Santa Cruz)</option>
+            </optgroup>
+            <optgroup label="Custom area" data-i18n-label="zone.group.custom">
+              <option value="custom" disabled data-i18n="zone.custom">Area chosen on the map</option>
+            </optgroup>
           </select>
         </div>
 
@@ -296,10 +310,12 @@
   <script src="data/processed/data_bundle.js?v=main4"></script>
   <!-- Resultados del modelo de Machine Learning (scripts/ml_model.py) -->
   <script src="data/processed/ml_bundle.js?v=main4"></script>
+  <!-- Polígonos de Áreas Naturales Protegidas de Bolivia (SERNAP / WDPA / OSM) -->
+  <script src="data/processed/protected_areas_bundle.js?v=main1"></script>
 
   <!-- Textos ES/EN (debe cargarse antes de app.js) -->
-  <script src="i18n.js?v=main14"></script>
+  <script src="i18n.js?v=main15"></script>
   <!-- Lógica y renderizado cliente -->
-  <script src="app.js?v=main14"></script>
+  <script src="app.js?v=main15"></script>
 </body>
 </html>

@@ -10,7 +10,7 @@
  *   - data/processed/validation.csv
  *   - data/processed/data_bundle.js (fallback autónomo compatible con file:// y servidor local)
  */
-/* global L, turf, echarts, t, setLang, applyStaticI18n, PIXFIRE_DATA, PIXFIRE_GRIDS, PIXFIRE_ML */
+/* global L, turf, echarts, t, setLang, applyStaticI18n, PIXFIRE_DATA, PIXFIRE_GRIDS, PIXFIRE_ML, PIXFIRE_PROTECTED_AREAS */
 // noinspection JSUnresolvedReference,JSUnusedGlobalSymbols,SpellCheckingInspection
 
 // Textos según el idioma (i18n.js). Se recalculan al cambiar ES/EN en refreshLangConstants().
@@ -70,6 +70,7 @@ let chartHarmValidation = null;
 let layersControl = null; // control de capas (se rehace al cambiar de idioma)
 let drawControl = null; // herramientas de dibujo (se rehacen al cambiar de idioma)
 let baseLayers = null;
+let protectedAreasLayer = null; // capa GeoJSON de Áreas Naturales Protegidas (SERNAP / WDPA / OSM)
 
 /** Factor k_m del mes (con respaldo al factor anual si faltara). */
 function getFactor(month) {
@@ -223,6 +224,7 @@ async function loadAllData(resKey) {
   cellLayers = g.cellLayers;
   if (map && gridLayerGroup && !map.hasLayer(gridLayerGroup)) {
     gridLayerGroup.addTo(map);
+    if (protectedAreasLayer && typeof protectedAreasLayer.bringToFront === "function") protectedAreasLayer.bringToFront();
     if (drawnItems && typeof drawnItems.bringToFront === "function") drawnItems.bringToFront();
   }
 }
@@ -231,6 +233,53 @@ function classifySubregion(lat, lon) {
   if (lon <= -64.0 && lat < -14.0) return "andina_valles";
   if (lat >= -14.0) return "amazonia_beni_norte";
   return "chiquitania_llanos";
+}
+
+function pointInRing(lon, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-15) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function pointInPolyRings(lon, lat, rings) {
+  if (!pointInRing(lon, lat, rings[0])) return false;
+  for (let k = 1; k < rings.length; k++) {
+    if (pointInRing(lon, lat, rings[k])) return false;
+  }
+  return true;
+}
+
+/** Devuelve el identificador del Área Natural Protegida (ej. "pa_san_matias") si el centro cae dentro, o null. */
+function classifyProtectedArea(lat, lon) {
+  const fc = typeof PIXFIRE_PROTECTED_AREAS !== "undefined" ? PIXFIRE_PROTECTED_AREAS : null;
+  if (!fc || !fc.features) return null;
+  for (let i = 0; i < fc.features.length; i++) {
+    const f = fc.features[i];
+    const b = f.bbox;
+    if (b && (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3])) continue;
+    const g = f.geometry;
+    if (g.type === "Polygon" && pointInPolyRings(lon, lat, g.coordinates)) return f.id;
+    if (g.type === "MultiPolygon") {
+      for (let p = 0; p < g.coordinates.length; p++) {
+        if (pointInPolyRings(lon, lat, g.coordinates[p])) return f.id;
+      }
+    }
+  }
+  return null;
+}
+
+function getProtectedAreaFeature(paId) {
+  const fc = typeof PIXFIRE_PROTECTED_AREAS !== "undefined" ? PIXFIRE_PROTECTED_AREAS : null;
+  if (!fc || !fc.features || !paId) return null;
+  return fc.features.find((f) => f.id === paId) || null;
 }
 
 /** Lee monthly_cells.csv de una grilla: una entrada por celda con sus registros mensuales. */
@@ -268,6 +317,7 @@ function parseCellsCsv(csvText, cellSize) {
           lat,
           lon,
           subregion: classifySubregion(lat, lon),
+          protectedAreaId: classifyProtectedArea(lat, lon),
           totalHarm: 0,
           totalRaw: 0,
           records: [],
@@ -339,6 +389,17 @@ function initMap() {
 
   lightLayer.addTo(map);
   baseLayers = { light: lightLayer, sat: satLayer };
+
+  if (typeof PIXFIRE_PROTECTED_AREAS !== "undefined" && PIXFIRE_PROTECTED_AREAS) {
+    // noinspection JSUnresolvedReference
+    protectedAreasLayer = L.geoJSON(PIXFIRE_PROTECTED_AREAS, {
+      interactive: false,
+      style: (feature) => getProtectedAreaStyle(feature)
+    }).addTo(map);
+    map.on("overlayadd", updateMapLegend);
+    map.on("overlayremove", updateMapLegend);
+  }
+
   buildLayersControl();
 
   const legend = L.control({ position: "bottomleft" });
@@ -389,13 +450,33 @@ function initMap() {
   }
 }
 
-/** Control de capas (mapa claro / satélite) con los nombres en el idioma actual. */
+function getProtectedAreaStyle(feature) {
+  const fId = feature && (feature.id || (feature.properties && feature.properties.id));
+  const isHighlighted = state.preset === "pa_all" || (state.preset && state.preset === fId);
+  return {
+    color: isHighlighted ? "#047857" : "#059669",
+    weight: isHighlighted ? 2.6 : 1.5,
+    dashArray: isHighlighted ? null : "5, 4",
+    fillColor: "#10b981",
+    fillOpacity: isHighlighted ? 0.08 : 0.02,
+    interactive: false
+  };
+}
+
+function updateProtectedAreasStyle() {
+  if (!protectedAreasLayer) return;
+  protectedAreasLayer.setStyle((feature) => getProtectedAreaStyle(feature));
+  if (typeof protectedAreasLayer.bringToFront === "function") protectedAreasLayer.bringToFront();
+}
+
+/** Control de capas (mapa claro / satélite + áreas protegidas) con los nombres en el idioma actual. */
 function buildLayersControl() {
   if (!map || !baseLayers) return;
   if (layersControl) map.removeControl(layersControl);
+  const overlays = protectedAreasLayer ? { [t("map.layer.pa")]: protectedAreasLayer } : null;
   // noinspection JSUnresolvedReference
   layersControl = L.control
-    .layers({ [t("map.layer.light")]: baseLayers.light, [t("map.layer.sat")]: baseLayers.sat }, null, { position: "topleft" })
+    .layers({ [t("map.layer.light")]: baseLayers.light, [t("map.layer.sat")]: baseLayers.sat }, overlays, { position: "topleft" })
     .addTo(map);
 }
 
@@ -583,7 +664,15 @@ function cellTooltipHtml(cell) {
       compareLine = `<br><span style='color:#fca5a5'>${t("map.harm.tip.compare", { raw: fmtDays(rawV), harm: fmtDays(harmV) })}</span>`;
     }
   }
-  return body + compareLine + `<br><span style='color:#64748b'>${t("tip.click")}</span>`;
+  let paLine = "";
+  if (cell.protectedAreaId) {
+    const pa = getProtectedAreaFeature(cell.protectedAreaId);
+    if (pa && pa.properties) {
+      const name = document.documentElement.lang === "en" ? pa.properties.short_en : pa.properties.short_es;
+      paLine = `<br><span style='color:#047857'>${t("tip.pa", { name, norm: pa.properties.legal_norm })}</span>`;
+    }
+  }
+  return body + compareLine + paLine + `<br><span style='color:#64748b'>${t("tip.click")}</span>`;
 }
 
 /**
@@ -674,6 +763,9 @@ function updateMapLegend() {
         return `<div class="legend-row"><i style="background:${c.color}"></i>${t(c.label, { a, b })}</div>`;
       })
       .join("") +
+    (protectedAreasLayer && map && map.hasLayer(protectedAreasLayer)
+      ? `<div class="legend-row" style="margin-top:3px"><i class="legend-pa-swatch"></i>${t("legend.pa")}</div>`
+      : "") +
     (scaleFactor(state.mapMode) !== 1 ? `<div class="legend-note">${t("scale.perCell", { deg: fmtNum(state.meta.cell_size_deg, 2) })}</div>` : "");
 }
 
@@ -875,11 +967,21 @@ function openCellPopup(cell, latlng) {
   const cs = state.meta ? state.meta.cell_size_deg : 0.25;
   const kmLabel = cs <= 0.05 ? fmtNum(5.5, 1) : cs <= 0.10 ? "11" : "27";
 
+  let paBadge = "";
+  if (cell.protectedAreaId) {
+    const pa = getProtectedAreaFeature(cell.protectedAreaId);
+    if (pa && pa.properties) {
+      const name = document.documentElement.lang === "en" ? pa.properties.short_en : pa.properties.short_es;
+      paBadge = `<div class="cp-pa-badge">${t("tip.pa", { name, norm: pa.properties.legal_norm })}</div>`;
+    }
+  }
+
   const div = document.createElement("div");
   div.className = "cell-popup";
   div.innerHTML = `
     <div class="cp-title">${t("cp.title")}</div>
     <div class="cp-sub">${t(`sub.${cell.subregion}`)} · ${t("cp.square.km", { km: kmLabel })}</div>
+    ${paBadge}
     ${buildSparklineSvg(totals, years)}
     <div class="cp-axis"><span>2003</span><span>${lastYear}${lastYear === 2026 ? "*" : ""}</span></div>
     <div class="cp-stats">
@@ -942,6 +1044,8 @@ function cellMatchesPreset(cell, preset) {
   if (preset === "chiquitania") return cell.subregion === "chiquitania_llanos";
   if (preset === "amazonia") return cell.subregion === "amazonia_beni_norte";
   if (preset === "andina") return cell.subregion === "andina_valles";
+  if (preset === "pa_all") return Boolean(cell.protectedAreaId);
+  if (preset && preset.startsWith("pa_")) return cell.protectedAreaId === preset;
   return true;
 }
 
@@ -1011,6 +1115,7 @@ function recomputeAoiSelection() {
     }
   }
 
+  updateProtectedAreasStyle();
   renderMapGrid();
   aggregateSelectedCells();
   updateAllViews();
@@ -1778,7 +1883,10 @@ function mlCellsForSelection(ml) {
       const [r, c] = id.split("_").map(Number);
       const lat = (r + 0.5) * 0.25 - 90;
       const lon = (c + 0.5) * 0.25 - 180;
-      return cellMatchesPreset({ subregion: classifySubregion(lat, lon) }, state.preset);
+      return cellMatchesPreset(
+        { subregion: classifySubregion(lat, lon), protectedAreaId: classifyProtectedArea(lat, lon) },
+        state.preset
+      );
     });
   }
   const [pMinLon, pMinLat, pMaxLon, pMaxLat] = turf.bbox(state.customPolygon);
@@ -2104,7 +2212,7 @@ function renderMlProjectionChart(ml) {
     });
   }
 
-  const area = presetKey ? zoneName(presetKey) : t("ml.proj.custom");
+  const area = state.preset !== "custom" ? zoneName(state.preset) : t("ml.proj.custom");
 
   chartMlProjection.setOption({
     animation: false,
@@ -2709,10 +2817,21 @@ function resetToPreset(preset) {
   if (sel) sel.value = preset;
 
   if (map) {
-    if (preset === "all") map.setView([-16.4, -64.2], 5);
+    if (preset && preset.startsWith("pa_") && protectedAreasLayer && !map.hasLayer(protectedAreasLayer)) {
+      protectedAreasLayer.addTo(map);
+      buildLayersControl();
+    }
+    if (preset === "all" || preset === "pa_all") map.setView([-16.4, -64.2], 5);
     else if (preset === "chiquitania") map.setView([-17.5, -60.8], 6);
     else if (preset === "amazonia") map.setView([-12.5, -66.5], 6);
     else if (preset === "andina") map.setView([-18.5, -66.5], 6);
+    else if (preset && preset.startsWith("pa_")) {
+      const pa = getProtectedAreaFeature(preset);
+      if (pa && Array.isArray(pa.bbox)) {
+        const [minLon, minLat, maxLon, maxLat] = pa.bbox;
+        map.fitBounds([[minLat, minLon], [maxLat, maxLon]], { maxZoom: 7, padding: [28, 28] });
+      }
+    }
   }
 
   recomputeAoiSelection();

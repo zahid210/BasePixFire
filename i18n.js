@@ -42,10 +42,21 @@ const I18N = {
     "reset": "Volver a toda Bolivia",
 
     // Zonas
+    "zone.group.macro": "Regiones de Bolivia",
+    "zone.group.pa": "Áreas Protegidas (SERNAP)",
+    "zone.group.custom": "Área dibujada",
     "zone.all": "Toda Bolivia",
     "zone.chiquitania": "Chiquitanía y Llanos",
     "zone.amazonia": "Amazonía y Beni",
     "zone.andina": "Andina y Valles",
+    "zone.pa_all": "Todas las Áreas Protegidas (7)",
+    "zone.pa_san_matias": "ANMI San Matías (Pantanal/Chiquitanía)",
+    "zone.pa_noel_kempff": "PN Noel Kempff Mercado (UNESCO)",
+    "zone.pa_otuquis": "PN y ANMI Otuquis (Pantanal)",
+    "zone.pa_tipnis": "TIPNIS — Isiboro-Sécure",
+    "zone.pa_madidi": "PN y ANMI Madidi (La Paz)",
+    "zone.pa_kaaiya": "PN y ANMI Kaa-Iya del Gran Chaco",
+    "zone.pa_amboro": "PN y ANMI Amboró (Santa Cruz)",
     "zone.custom": "Zona elegida en el mapa",
     "sub.chiquitania_llanos": "Chiquitanía y Llanos",
     "sub.amazonia_beni_norte": "Amazonía y Beni Norte",
@@ -88,6 +99,9 @@ const I18N = {
     "map.hint": "Haz clic en un cuadro para ver su historia, o dibuja tu propia zona con las herramientas del mapa (arriba a la derecha).",
     "map.layer.light": "Mapa claro",
     "map.layer.sat": "Satélite",
+    "map.layer.pa": "Áreas Protegidas (SERNAP)",
+    "legend.pa": "Áreas Protegidas (SERNAP)",
+    "tip.pa": "🌿 <b>{name}</b> ({norm})",
     "coord.summary": "Elegir la zona con coordenadas",
     "coord.aria": "Zona por coordenadas",
     "coord.latFrom": "Latitud de",
@@ -365,10 +379,21 @@ const I18N = {
     "dl.png.d": "The chart you are viewing · PNG",
     "reset": "Back to all of Bolivia",
 
+    "zone.group.macro": "Regions of Bolivia",
+    "zone.group.pa": "Protected Areas (SERNAP)",
+    "zone.group.custom": "Custom area",
     "zone.all": "All of Bolivia",
     "zone.chiquitania": "Chiquitanía and Lowlands",
     "zone.amazonia": "Amazon and Beni",
     "zone.andina": "Andes and Valleys",
+    "zone.pa_all": "All Protected Areas (7)",
+    "zone.pa_san_matias": "San Matías ANMI (Pantanal/Chiquitanía)",
+    "zone.pa_noel_kempff": "Noel Kempff Mercado NP (UNESCO)",
+    "zone.pa_otuquis": "Otuquis Pantanal NP (Ramsar)",
+    "zone.pa_tipnis": "TIPNIS — Isiboro-Sécure",
+    "zone.pa_madidi": "Madidi NP & ANMI (La Paz)",
+    "zone.pa_kaaiya": "Kaa-Iya del Gran Chaco NP",
+    "zone.pa_amboro": "Amboró NP & ANMI (Santa Cruz)",
     "zone.custom": "Area chosen on the map",
     "sub.chiquitania_llanos": "Chiquitanía and Lowlands",
     "sub.amazonia_beni_norte": "Amazon and Northern Beni",
@@ -409,6 +434,9 @@ const I18N = {
     "map.hint": "Click a square to see its history, or draw your own area with the map tools (top right).",
     "map.layer.light": "Light map",
     "map.layer.sat": "Satellite",
+    "map.layer.pa": "Protected Areas (SERNAP)",
+    "legend.pa": "Protected Areas (SERNAP)",
+    "tip.pa": "🌿 <b>{name}</b> ({norm})",
     "coord.summary": "Choose the area by coordinates",
     "coord.aria": "Area by coordinates",
     "coord.latFrom": "Latitude from",
@@ -678,6 +706,9 @@ function applyStaticI18n() {
   });
   document.querySelectorAll("[data-i18n-aria]").forEach((el) => {
     el.setAttribute("aria-label", t(el.dataset.i18nAria));
+  });
+  document.querySelectorAll("[data-i18n-label]").forEach((el) => {
+    el.setAttribute("label", t(el.dataset.i18nLabel));
   });
   document.querySelectorAll(".lang-btn").forEach((b) => {
     const active = b.dataset.lang === LANG;
