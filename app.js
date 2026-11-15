@@ -571,8 +571,12 @@ function renderMapGrid() {
       } else {
         // noinspection JSUnresolvedReference
         rect.on("mouseover", () => {
-          // noinspection JSUnresolvedReference
-          if (!rect.getTooltip()) rect.bindTooltip(() => cellTooltipHtml(cell), { sticky: true }).openTooltip();
+          if (!rect.getTooltip()) {
+            // noinspection JSUnresolvedReference
+            rect.bindTooltip(() => cellTooltipHtml(cell), { sticky: true });
+            // noinspection JSUnresolvedReference
+            rect.openTooltip();
+          }
         });
       }
       // noinspection JSUnresolvedReference
@@ -1787,8 +1791,7 @@ function renderMlEffectsChart(ml) {
       series.push({
         name, type: "custom", color, z: 2, tooltip: { show: false },
         data: terms.map((x, i) => [i + 1, x.ci_low, x.ci_high]),
-        // noinspection JSUnusedGlobalSymbols
-        renderItem: (_params, api) => {
+        ["renderItem"]: (_params, api) => {
           const lo = api.coord([api.value(0), api.value(1)]);
           const hi = api.coord([api.value(0), api.value(2)]);
           const x = lo[0] + dx;
@@ -2180,9 +2183,12 @@ function renderHarmFactorsChart(meta) {
     tooltip: {
       ...TOOLTIP_STYLE,
       trigger: "axis",
-      // noinspection JSUnresolvedReference
-      formatter: (ps) => `<b>${MONTH_FULL_NAMES[ps[0].dataIndex]}</b><br>` +
-        t("harm.k.tip", { k: fmtNum(ps[0].value, 3), inv: fmtNum(1 / ps[0].value, 1) })
+      formatter: (ps) => {
+        // noinspection JSUnresolvedReference
+        const idx = ps[0].dataIndex;
+        return `<b>${MONTH_FULL_NAMES[idx]}</b><br>` +
+          t("harm.k.tip", { k: fmtNum(ps[0].value, 3), inv: fmtNum(1 / ps[0].value, 1) });
+      }
     },
     xAxis: { type: "category", data: MONTH_NAMES, axisLabel: { fontSize: 9 }, axisTick: { show: false } },
     yAxis: { type: "value", min: 0, axisLabel: { fontSize: 9, formatter: (v) => fmtNum(v, 2) }, splitLine: { lineStyle: { color: "#f1f5f9" } } },
