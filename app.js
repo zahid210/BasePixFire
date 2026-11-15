@@ -42,6 +42,8 @@ const state = {
   gridCache: new Map(),
   animTimer: null,
   currentSeriesByYm: new Map(),
+  histStats: null,
+  _customValNums: null,
   subregionTotals: {
     chiquitania_llanos: 0,
     amazonia_beni_norte: 0,
@@ -52,7 +54,7 @@ const state = {
 let map = null;
 let gridLayerGroup = null;
 let drawnItems = null;
-const cellLayers = new Map(); // cell_id -> L.rectangle (se crean una sola vez)
+let cellLayers = new Map(); // cell_id -> L.rectangle (se crean una sola vez por grilla)
 let isDrawing = false; // evita abrir popups de celda mientras se dibuja un polígono
 let chartCalendar = null;
 let chartSeries = null;
@@ -73,8 +75,10 @@ function getFactor(month) {
   return Number(f != null ? f : state.meta.factor_annual_fallback || 1);
 }
 
+const PAD2 = ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"];
+
 function ymKey(year, month) {
-  return `${year}-${String(month).padStart(2, "0")}`;
+  return `${year}-${PAD2[month] || String(month).padStart(2, "0")}`;
 }
 
 function round1(v) {
@@ -188,20 +192,36 @@ function applyGridYearLimits() {
   syncFocusMonthOptions();
 }
 
-/** Activa una grilla: sus celdas, su serie de validación y sus metadatos (factores y métricas). */
+/** Activa una grilla: sus celdas, su serie de validación, sus metadatos y su capa Leaflet en caché. */
 async function loadAllData(resKey) {
   if (resKey) state.gridRes = resKey;
   const res = state.gridRes || "0.25";
   if (!state.gridCache.has(res)) {
     const raw = await getGridRaw(res);
     const cells = parseCellsCsv(raw.cellsCsv, raw.meta.cell_size_deg);
-    state.gridCache.set(res, { meta: raw.meta, ...cells, validationRows: parseValidationCsv(raw.valCsv) });
+    state.gridCache.set(res, {
+      meta: raw.meta,
+      ...cells,
+      validationRows: parseValidationCsv(raw.valCsv),
+      layerGroup: typeof L !== "undefined" ? L.layerGroup() : null,
+      cellLayers: new Map(),
+      presetCache: new Map()
+    });
   }
   const g = state.gridCache.get(res);
   state.meta = g.meta;
   state.cellsMeta = g.cellsMeta;
   state.subregionTotals = g.subregionTotals;
   state.validationRows = g.validationRows;
+  if (gridLayerGroup && gridLayerGroup !== g.layerGroup && map && map.hasLayer(gridLayerGroup)) {
+    map.removeLayer(gridLayerGroup);
+  }
+  gridLayerGroup = g.layerGroup;
+  cellLayers = g.cellLayers;
+  if (map && gridLayerGroup && !map.hasLayer(gridLayerGroup)) {
+    gridLayerGroup.addTo(map);
+    if (drawnItems && typeof drawnItems.bringToFront === "function") drawnItems.bringToFront();
+  }
 }
 
 function classifySubregion(lat, lon) {
@@ -215,29 +235,37 @@ function parseCellsCsv(csvText, cellSize) {
   const cellsMeta = new Map();
   const subregionTotals = { chiquitania_llanos: 0, amazonia_beni_norte: 0, andina_valles: 0 };
   const lines = csvText.trim().split("\n");
+  let lastCellId = "";
+  let cellObj = null;
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
     if (!line) continue;
-    const [cellId, yStr, mStr, hStr, aStr, sStr, source] = line.split(",");
-    const year = parseInt(yStr, 10);
-    const month = parseInt(mStr, 10);
-    const harm = parseFloat(hStr);
-    const aqua = aStr === "" ? null : parseInt(aStr, 10);
-    const snpp = sStr === "" ? null : parseInt(sStr, 10);
+    const parts = line.split(",");
+    const cellId = parts[0];
+    const year = parseInt(parts[1], 10);
+    const month = parseInt(parts[2], 10);
+    const ym = `${year}-${PAD2[month]}`;
+    const harm = parseFloat(parts[3]);
+    const aqua = parts[4] === "" ? null : parseInt(parts[4], 10);
+    const snpp = parts[5] === "" ? null : parseInt(parts[5], 10);
+    const source = parts[6] ? parts[6].trim() : "";
 
-    let cellObj = cellsMeta.get(cellId);
-    if (!cellObj) {
-      const [rStr, cStr] = cellId.split("_");
-      const row = parseInt(rStr, 10);
-      const col = parseInt(cStr, 10);
-      const lat = (row + 0.5) * cellSize - 90.0;
-      const lon = (col + 0.5) * cellSize - 180.0;
-      cellObj = { cellId, row, col, lat, lon, subregion: classifySubregion(lat, lon), totalHarm: 0, records: [], byYm: new Map() };
-      cellsMeta.set(cellId, cellObj);
+    if (cellId !== lastCellId) {
+      cellObj = cellsMeta.get(cellId);
+      if (!cellObj) {
+        const sep = cellId.indexOf("_");
+        const row = parseInt(cellId.slice(0, sep), 10);
+        const col = parseInt(cellId.slice(sep + 1), 10);
+        const lat = (row + 0.5) * cellSize - 90.0;
+        const lon = (col + 0.5) * cellSize - 180.0;
+        cellObj = { cellId, row, col, lat, lon, subregion: classifySubregion(lat, lon), totalHarm: 0, records: [], byYm: new Map() };
+        cellsMeta.set(cellId, cellObj);
+      }
+      lastCellId = cellId;
     }
     cellObj.totalHarm += harm;
-    cellObj.records.push({ cellId, year, month, harm, aqua, snpp, source: source ? source.trim() : "" });
-    cellObj.byYm.set(ymKey(year, month), harm);
+    cellObj.records.push({ cellId, year, month, ym, harm, aqua, snpp, source });
+    cellObj.byYm.set(ym, harm);
     subregionTotals[cellObj.subregion] += harm;
   }
   return { cellsMeta, subregionTotals };
@@ -293,8 +321,6 @@ function initMap() {
   lightLayer.addTo(map);
   baseLayers = { light: lightLayer, sat: satLayer };
   buildLayersControl();
-
-  gridLayerGroup = L.layerGroup().addTo(map);
 
   const legend = L.control({ position: "bottomleft" });
   legend.onAdd = () => {
@@ -438,32 +464,51 @@ function scaledMin(c, mode) {
   return Number((c.min * scaleFactor(mode)).toPrecision(2));
 }
 
-function getScaleColor(mode, value) {
-  const classes = MAP_SCALES[mode].classes;
-  const found = classes.find((c) => value > scaledMin(c, mode));
-  return found ? found.color : classes[classes.length - 1].color;
+function getScaleColor(mode, value, precomputedClasses) {
+  const classes = precomputedClasses || MAP_SCALES[mode].classes;
+  for (let i = 0; i < classes.length; i++) {
+    const min = precomputedClasses ? classes[i].scaledMin : scaledMin(classes[i], mode);
+    if (value > min) return classes[i].color;
+  }
+  return classes[classes.length - 1].color;
+}
+
+/** Precalcula el divisor de años activos y si el rango cubre todo el historial de la grilla. */
+function syncPeriodParams() {
+  const endY = gridEndYear();
+  const key = `${state.yearStart}_${state.yearEnd}_${endY}`;
+  if (state._periodSyncKey !== key) {
+    let activeMonths = 0;
+    for (let y = state.yearStart; y <= state.yearEnd; y++) {
+      activeMonths += y === 2026 ? 10 : 12;
+    }
+    state._periodSyncKey = key;
+    state._periodKey = `${state.yearStart}_${state.yearEnd}`;
+    state._periodNumYears = Math.max(0.833, activeMonths / 12.0);
+    state._isFullPeriod = state.yearStart <= 2003 && state.yearEnd >= endY;
+  }
 }
 
 /** Valor de una celda según el modo del mapa (promedio del periodo, mes elegido o pronóstico). */
 function getCellMapValue(cell) {
   if (state.mapMode === "ml") return getMlCellAnnual(cell);
   if (state.mapMode === "month") {
-    return cell.byYm.get(ymKey(state.focusYear, state.focusMonth)) || 0;
+    return cell.byYm.get( state._focusYmKey || ymKey(state.focusYear, state.focusMonth) ) || 0;
   }
   // Promedio anual del rango; se guarda en la celda para no recalcularlo en cada repintado
-  const key = `${state.yearStart}_${state.yearEnd}`;
+  syncPeriodParams();
+  const key = state._periodKey;
   if (cell._periodKey !== key) {
-    let activeMonths = 0;
-    for (let y = state.yearStart; y <= state.yearEnd; y++) {
-      activeMonths += y === 2026 ? 10 : 12;
-    }
-    const numYears = Math.max(0.833, activeMonths / 12.0);
     let periodHarm = 0;
-    for (const r of cell.records) {
-      if (r.year >= state.yearStart && r.year <= state.yearEnd) periodHarm += r.harm;
+    if (state._isFullPeriod) {
+      periodHarm = cell.totalHarm;
+    } else {
+      for (const r of cell.records) {
+        if (r.year >= state.yearStart && r.year <= state.yearEnd) periodHarm += r.harm;
+      }
     }
     cell._periodKey = key;
-    cell._periodAvg = periodHarm / numYears;
+    cell._periodAvg = periodHarm / state._periodNumYears;
   }
   return cell._periodAvg;
 }
@@ -479,14 +524,20 @@ function cellTooltipHtml(cell) {
 }
 
 /**
- * Pinta la grilla. Los rectángulos se crean una sola vez y luego solo se
- * actualiza su estilo (necesario para que la animación mes a mes sea fluida).
+ * Pinta la grilla. Los rectángulos se crean una sola vez por resolución y luego solo se
+ * actualiza su estilo (necesario para que el cambio de grilla y la animación sean fluidos).
  */
 function renderMapGrid() {
   if (!gridLayerGroup || !state.meta) return;
   const cs = state.meta.cell_size_deg;
   const half = cs / 2.0;
   const mode = state.mapMode;
+  state._focusYmKey = ymKey(state.focusYear, state.focusMonth);
+  if (mode === "period") syncPeriodParams();
+  const scaledClasses = MAP_SCALES[mode].classes.map((c) => ({
+    color: c.color,
+    scaledMin: scaledMin(c, mode)
+  }));
 
   const selWeight = cs < 0.25 ? 0.35 : 0.75;
   const unselWeight = cs < 0.25 ? 0.1 : 0.25;
@@ -512,7 +563,7 @@ function renderMapGrid() {
 
     const isSelected = state.selectedCells.has(cell.cellId);
     const value = getCellMapValue(cell);
-    const fillColor = getScaleColor(mode, value);
+    const fillColor = getScaleColor(mode, value, scaledClasses);
     const noFire = mode === "month" && value <= 0;
 
     rect.setStyle({
@@ -734,18 +785,32 @@ function cellMatchesPreset(cell, preset) {
 }
 
 function recomputeAoiSelection() {
-  state.selectedCells.clear();
+  const g = state.gridCache.get(state.gridRes || "0.25");
+  let polyBbox = null;
 
-  state.cellsMeta.forEach((cell) => {
+  if (state.preset !== "custom" && g && g.presetCache.has(state.preset)) {
+    state.selectedCells = g.presetCache.get(state.preset).selectedCells;
+  } else {
+    state.selectedCells = new Set();
     if (state.preset === "custom" && state.customPolygon) {
-      const pt = turf.point([cell.lon, cell.lat]);
-      if (turf.booleanPointInPolygon(pt, state.customPolygon)) {
-        state.selectedCells.add(cell.cellId);
-      }
-    } else if (cellMatchesPreset(cell, state.preset)) {
-      state.selectedCells.add(cell.cellId);
+      polyBbox = turf.bbox(state.customPolygon);
+      const [pMinLon, pMinLat, pMaxLon, pMaxLat] = polyBbox;
+      state.cellsMeta.forEach((cell) => {
+        if (cell.lon >= pMinLon && cell.lon <= pMaxLon && cell.lat >= pMinLat && cell.lat <= pMaxLat) {
+          const pt = turf.point([cell.lon, cell.lat]);
+          if (turf.booleanPointInPolygon(pt, state.customPolygon)) {
+            state.selectedCells.add(cell.cellId);
+          }
+        }
+      });
+    } else {
+      state.cellsMeta.forEach((cell) => {
+        if (cellMatchesPreset(cell, state.preset)) {
+          state.selectedCells.add(cell.cellId);
+        }
+      });
     }
-  });
+  }
 
   const count = state.selectedCells.size;
 
@@ -755,7 +820,7 @@ function recomputeAoiSelection() {
 
   if (state.preset === "custom" && state.customPolygon && state.meta && Array.isArray(state.meta.bbox)) {
     const [bMinLon, bMinLat, bMaxLon, bMaxLat] = state.meta.bbox;
-    const polyBbox = turf.bbox(state.customPolygon);
+    if (!polyBbox) polyBbox = turf.bbox(state.customPolygon);
     const tol = 0.25;
     if (
       polyBbox[0] < bMinLon - tol ||
@@ -791,13 +856,22 @@ function recomputeAoiSelection() {
 }
 
 function aggregateSelectedCells() {
-  state.currentSeriesByYm.clear();
+  const g = state.gridCache.get(state.gridRes || "0.25");
+  if (state.preset !== "custom" && g && g.presetCache.has(state.preset)) {
+    const cached = g.presetCache.get(state.preset);
+    state.currentSeriesByYm = cached.seriesByYm;
+    state.histStats = cached.histStats;
+    state._customValNums = null;
+    return;
+  }
+
+  const seriesByYm = new Map();
 
   for (let y = 2003; y <= 2026; y++) {
     for (let m = 1; m <= 12; m++) {
       if (y === 2026 && m > 10) continue;
       const ym = `${y}-${String(m).padStart(2, "0")}`;
-      state.currentSeriesByYm.set(ym, {
+      seriesByYm.set(ym, {
         year: y,
         month: m,
         harm: 0.0,
@@ -812,8 +886,7 @@ function aggregateSelectedCells() {
     const cell = state.cellsMeta.get(cellId);
     if (!cell) return;
     for (const r of cell.records) {
-      const ym = `${r.year}-${String(r.month).padStart(2, "0")}`;
-      const bucket = state.currentSeriesByYm.get(ym);
+      const bucket = seriesByYm.get(r.ym);
       if (!bucket) continue;
       bucket.harm += r.harm;
       if (r.aqua !== null) bucket.aqua = (bucket.aqua || 0) + r.aqua;
@@ -821,6 +894,19 @@ function aggregateSelectedCells() {
       if (r.source === "snpp_converted_nrt" || r.source === "snpp_nrt") bucket.hasNrt = true;
     }
   });
+
+  state.currentSeriesByYm = seriesByYm;
+  state.histStats = null;
+  state._customValNums = null;
+  state.histStats = computeHistoricalStatsByMonth();
+
+  if (state.preset !== "custom" && g) {
+    g.presetCache.set(state.preset, {
+      selectedCells: state.selectedCells,
+      seriesByYm: state.currentSeriesByYm,
+      histStats: state.histStats
+    });
+  }
 }
 
 /* =========================================================================
@@ -839,6 +925,7 @@ function quantile(arr, q) {
 }
 
 function computeHistoricalStatsByMonth() {
+  if (state.histStats) return state.histStats;
   const byM = {};
   for (let m = 1; m <= 12; m++) byM[m] = [];
 
@@ -861,6 +948,7 @@ function computeHistoricalStatsByMonth() {
       p75: quantile(vals, 0.75)
     };
   }
+  state.histStats = out;
   return out;
 }
 
@@ -1339,27 +1427,34 @@ function getValidationMetrics() {
     return m ? { ...m, scope: t("trust.scope.region") } : null;
   }
 
-  // Zona propia: se calcula con las celdas elegidas
-  let sumAqua = 0;
-  let sumSnppRaw = 0;
-  let sumSnppHarm = 0;
-  state.selectedCells.forEach((cellId) => {
-    const cell = state.cellsMeta.get(cellId);
-    if (!cell) return;
-    for (const r of cell.records) {
-      if (r.year < 2012 || r.year > 2021) continue;
-      if (r.year === 2012 && r.month === 1) continue;
-      if (r.year === 2020 && (r.month === 8 || r.month === 9)) continue;
-      const snpp = r.snpp || 0;
-      sumAqua += r.aqua || 0;
-      sumSnppRaw += snpp;
-      sumSnppHarm += snpp * getFactor(r.month);
-    }
-  });
-  if (sumAqua <= 0) return null;
+  // Zona propia: se calcula una vez por selección de celdas y se guarda en caché
+  if (state._customValNums === null) {
+    let sumAqua = 0;
+    let sumSnppRaw = 0;
+    let sumSnppHarm = 0;
+    state.selectedCells.forEach((cellId) => {
+      const cell = state.cellsMeta.get(cellId);
+      if (!cell) return;
+      for (const r of cell.records) {
+        if (r.year < 2012 || r.year > 2021) continue;
+        if (r.year === 2012 && r.month === 1) continue;
+        if (r.year === 2020 && (r.month === 8 || r.month === 9)) continue;
+        const snpp = r.snpp || 0;
+        sumAqua += r.aqua || 0;
+        sumSnppRaw += snpp;
+        sumSnppHarm += snpp * getFactor(r.month);
+      }
+    });
+    state._customValNums = sumAqua > 0
+      ? {
+          raw_bias_pct: ((sumSnppRaw - sumAqua) / sumAqua) * 100,
+          harmonized_bias_pct: ((sumSnppHarm - sumAqua) / sumAqua) * 100
+        }
+      : false;
+  }
+  if (!state._customValNums) return null;
   return {
-    raw_bias_pct: ((sumSnppRaw - sumAqua) / sumAqua) * 100,
-    harmonized_bias_pct: ((sumSnppHarm - sumAqua) / sumAqua) * 100,
+    ...state._customValNums,
     scope: t("trust.scope.custom")
   };
 }
@@ -1507,9 +1602,13 @@ function mlCellsForSelection(ml) {
       return cellMatchesPreset({ subregion: classifySubregion(lat, lon) }, state.preset);
     });
   }
+  const [pMinLon, pMinLat, pMaxLon, pMaxLat] = turf.bbox(state.customPolygon);
   return ids.filter((id) => {
     const [r, c] = id.split("_").map(Number);
-    return turf.booleanPointInPolygon(turf.point([(c + 0.5) * 0.25 - 180, (r + 0.5) * 0.25 - 90]), state.customPolygon);
+    const lon = (c + 0.5) * 0.25 - 180;
+    const lat = (r + 0.5) * 0.25 - 90;
+    if (lon < pMinLon || lon > pMaxLon || lat < pMinLat || lat > pMaxLat) return false;
+    return turf.booleanPointInPolygon(turf.point([lon, lat]), state.customPolygon);
   });
 }
 
@@ -2526,8 +2625,6 @@ function bindEvents() {
       try {
         await loadAllData(newRes);
         applyGridYearLimits();
-        if (gridLayerGroup) gridLayerGroup.clearLayers();
-        cellLayers.clear();
         const harmEl = document.getElementById("harmView");
         if (harmEl) delete harmEl.dataset.built; // factores y validación de la nueva grilla
         if (state.mapMode === "ml" && !mlMapAvailable()) setMapMode("period");
@@ -2677,6 +2774,10 @@ window.onLanguageChange = function onLanguageChange() {
     updateMlMapButton();
     await loadAllData();
     recomputeAoiSelection();
+    // Precarga en segundo plano el paquete de 0,10° cuando el navegador queda libre
+    setTimeout(() => {
+      getGridRaw("0.10").catch(() => {});
+    }, 1200);
   } catch (err) {
     console.error("Error inicializando la aplicación:", err);
     const warnBar = document.getElementById("aoiWarning");

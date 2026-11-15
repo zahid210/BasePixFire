@@ -228,7 +228,7 @@ const I18N = {
     "rank.note": "Totales de la zona en cuadros-día con fuego, entre {from} y {to}. *2026 solo incluye enero–octubre (provisional).",
 
     // Pie de página
-    "footer.links": "Datos: <a href=\"https://www.earthdata.nasa.gov/data/tools/firms\" target=\"_blank\" rel=\"noopener\">NASA FIRMS</a> · <a href=\"docs/METODO.md\" target=\"_blank\" rel=\"noopener\">Método</a> · <a href=\"REFERENCES.md\" target=\"_blank\" rel=\"noopener\">Referencias</a> · <a href=\"LICENSE\" target=\"_blank\" rel=\"noopener\">Licencia Apache 2.0</a>",
+    "footer.links": "Datos: <a href=\"https://www.earthdata.nasa.gov/data/tools/firms\" target=\"_blank\" rel=\"noopener\">NASA FIRMS</a>",
     "footer.note": "NASA Space Apps Challenge 2026 · sin patrocinio oficial de NASA · 2026 es provisional (enero–octubre)",
 
     // Pestaña Armonización
@@ -259,7 +259,7 @@ const I18N = {
     "harm.reduction": "Elimina el {pct} % de la diferencia",
     "harm.aoi": "<b>En la zona elegida ({zone})</b>, {scope}: sin corregir {raw}; corregido {harm}.",
     "harm.aoi.none": "<b>En la zona elegida ({zone})</b> no hay suficientes datos con ambos satélites para comprobar la corrección.",
-    "harm.limits": "Desde 2022 la serie usa solo VIIRS corregido, porque la órbita de Aqua empezó a derivar; ago–sep 2020 también usa VIIRS corregido por el apagón de Aqua. El factor corrige totales, no cada detección individual. Detalles en docs/METODO.md.",
+    "harm.limits": "Desde 2022 la serie usa solo VIIRS corregido, porque la órbita de Aqua empezó a derivar; ago–sep 2020 también usa VIIRS corregido por el apagón de Aqua. El factor corrige totales, no cada detección individual.",
     "harm.aria.v": "Serie mensual de Bolivia: MODIS real, VIIRS sin corregir y VIIRS corregido",
     "harm.aria.k": "Factor de corrección de cada mes",
 
@@ -322,7 +322,7 @@ const I18N = {
     "ml.aria.proj": "Serie anual observada y proyección hasta 2030 con bandas de incertidumbre",
     "ml.aria.eff": "Efecto de los años desde el último fuego sobre la ocurrencia y la intensidad",
     "ml.aria.pow": "Relación de potencia entre la media y la varianza del conteo de fuego",
-    "ml.note": "Unidad: celda de 0,25° × mes. Variables: normal histórico de la celda, fuego el mismo mes del año anterior, años desde el último fuego y fuego en celdas vecinas, todas con datos <b>solo hasta el año anterior</b>. La proyección encadena {n} simulaciones año a año (lo simulado en un año es la historia del siguiente) e incluye el azar del fuego, la incertidumbre de los coeficientes y un “efecto año” común (años secos o húmedos). <b>Supone que el clima y el uso del suelo se comportan como en 2003–2025</b>; no anticipa sequías extremas ni cambios de política. Las celdas-día miden duración/extensión del fuego, no área quemada. Detalles en docs/METODO.md."
+    "ml.note": "Unidad: celda de 0,25° × mes. Variables: normal histórico de la celda, fuego el mismo mes del año anterior, años desde el último fuego y fuego en celdas vecinas, todas con datos <b>solo hasta el año anterior</b>. La proyección encadena {n} simulaciones año a año (lo simulado en un año es la historia del siguiente) e incluye el azar del fuego, la incertidumbre de los coeficientes y un “efecto año” común (años secos o húmedos). <b>Supone que el clima y el uso del suelo se comportan como en 2003–2025</b>; no anticipa sequías extremas ni cambios de política. Las celdas-día miden duración/extensión del fuego, no área quemada."
   },
 
   en: {
@@ -527,7 +527,7 @@ const I18N = {
     "rank.monthTimes": "{x} times the typical for that month",
     "rank.note": "Area totals in cell-days with fire, between {from} and {to}. *2026 only includes January–October (provisional).",
 
-    "footer.links": "Data: <a href=\"https://www.earthdata.nasa.gov/data/tools/firms\" target=\"_blank\" rel=\"noopener\">NASA FIRMS</a> · <a href=\"docs/METODO.md\" target=\"_blank\" rel=\"noopener\">Method (Spanish)</a> · <a href=\"REFERENCES.md\" target=\"_blank\" rel=\"noopener\">References</a> · <a href=\"LICENSE\" target=\"_blank\" rel=\"noopener\">Apache 2.0 License</a>",
+    "footer.links": "Data: <a href=\"https://www.earthdata.nasa.gov/data/tools/firms\" target=\"_blank\" rel=\"noopener\">NASA FIRMS</a>",
     "footer.note": "NASA Space Apps Challenge 2026 · not officially sponsored by NASA · 2026 is provisional (January–October)",
 
     // Harmonization tab
@@ -558,7 +558,7 @@ const I18N = {
     "harm.reduction": "Removes {pct}% of the difference",
     "harm.aoi": "<b>In the chosen area ({zone})</b>, {scope}: uncorrected {raw}; corrected {harm}.",
     "harm.aoi.none": "<b>In the chosen area ({zone})</b> there is not enough data from both satellites to check the correction.",
-    "harm.limits": "Since 2022 the series uses only corrected VIIRS, because Aqua's orbit began to drift; Aug–Sep 2020 also uses corrected VIIRS because of the Aqua outage. The factor corrects totals, not each individual detection. Details in docs/METODO.md (Spanish).",
+    "harm.limits": "Since 2022 the series uses only corrected VIIRS, because Aqua's orbit began to drift; Aug–Sep 2020 also uses corrected VIIRS because of the Aqua outage. The factor corrects totals, not each individual detection.",
     "harm.aria.v": "Monthly series for Bolivia: real MODIS, uncorrected VIIRS and corrected VIIRS",
     "harm.aria.k": "Correction factor for each month",
 
@@ -620,7 +620,7 @@ const I18N = {
     "ml.aria.proj": "Observed annual series and projection to 2030 with uncertainty bands",
     "ml.aria.eff": "Effect of years since the last fire on occurrence and intensity",
     "ml.aria.pow": "Power relationship between the mean and the variance of the fire count",
-    "ml.note": "Unit: 0.25° cell × month. Variables: the cell's historical normal, fire in the same month of the previous year, years since the last fire and fire in neighboring cells, all using data <b>only up to the previous year</b>. The projection chains {n} simulations year by year (what is simulated for one year becomes the history for the next) and includes the randomness of fire, the uncertainty of the coefficients and a shared “year effect” (dry or wet years). <b>It assumes climate and land use behave as in 2003–2025</b>; it does not anticipate extreme droughts or policy changes. Cell-days measure fire duration/extent, not burned area. Details in docs/METODO.md (Spanish)."
+    "ml.note": "Unit: 0.25° cell × month. Variables: the cell's historical normal, fire in the same month of the previous year, years since the last fire and fire in neighboring cells, all using data <b>only up to the previous year</b>. The projection chains {n} simulations year by year (what is simulated for one year becomes the history for the next) and includes the randomness of fire, the uncertainty of the coefficients and a shared “year effect” (dry or wet years). <b>It assumes climate and land use behave as in 2003–2025</b>; it does not anticipate extreme droughts or policy changes. Cell-days measure fire duration/extent, not burned area."
   }
 };
 
