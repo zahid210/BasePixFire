@@ -16,11 +16,11 @@
   <!--suppress JSUnresolvedLibraryURL -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
 
-  <link rel="stylesheet" href="styles.css?v=main9" />
+  <link rel="stylesheet" href="styles.css?v=main10" />
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <defs class="playing map-legend legend-when legend-title legend-row cell-popup cp-title cp-sub spark cp-axis cp-stats cp-note cp-btn high low ml-best bad">
+    <defs class="playing map-legend legend-when legend-title legend-row legend-harm-tag cell-popup cp-title cp-sub spark cp-axis cp-stats cp-note cp-btn high low ml-best bad">
       <symbol id="ic-download" viewBox="0 0 24 24">
         <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
       </symbol>
@@ -157,11 +157,19 @@
             <button type="button" class="map-mode-btn" data-mode="month" aria-pressed="false" title="Solo el mes elegido arriba" data-i18n="map.mode.month" data-i18n-title="map.mode.month.title">El mes elegido</button>
             <button type="button" class="map-mode-btn" data-mode="ml" aria-pressed="false" title="Lo que un modelo estadístico espera año a año hasta 2030 (elige el año en la pestaña Pronóstico)" data-i18n="map.mode.ml" data-i18n-title="map.mode.ml.title">Pronóstico 2030</button>
           </div>
+          <div class="seg-control" id="harmToggleGroup" data-map-modes="period month" role="group" aria-label="Comparar antes y después de armonizar" data-i18n-aria="map.harm.aria">
+            <button type="button" class="harm-mode-btn active" data-harm="after" aria-pressed="true" title="Después: serie armonizada en escala MODIS Aqua (sin salto por cambio de satélite)" data-i18n="map.harm.after" data-i18n-title="map.harm.after.title">✓ Armonizado</button>
+            <button type="button" class="harm-mode-btn" data-harm="before" aria-pressed="false" title="Antes: muestra el salto artificial (+185 %) al unir VIIRS sin corregir desde 2012" data-i18n="map.harm.before" data-i18n-title="map.harm.before.title">⚠ Sin corregir</button>
+          </div>
           <!-- El texto de este botón (Animar/Pausa) lo escribe app.js -->
           <button type="button" id="btnPlay" class="btn-action play-btn" title="Recorre los meses uno por uno" aria-label="Animar mes a mes" data-i18n-title="map.play.title">▶ Animar</button>
         </div>
 
         <div class="map-container">
+          <div id="mapHarmBanner" class="map-harm-banner hidden" role="status" aria-live="polite">
+            <span id="mapHarmBannerText"></span>
+            <button type="button" id="btnHarmFix" class="btn-harm-fix" data-i18n="map.harm.banner.fixBtn">Ver Armonizado ✓</button>
+          </div>
           <div id="map" class="map-canvas"></div>
         </div>
 
@@ -290,7 +298,7 @@
   <script src="data/processed/ml_bundle.js?v=main4"></script>
 
   <!-- Textos ES/EN (debe cargarse antes de app.js) -->
-  <script src="i18n.js?v=main9"></script>
+  <script src="i18n.js?v=main10"></script>
   <!-- Lógica y renderizado cliente -->
   <script src="app.js?v=main10"></script>
 </body>

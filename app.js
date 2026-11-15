@@ -39,6 +39,7 @@ const state = {
   compareSensors: false, // muestra las líneas de cada satélite en "Evolución"
   activeView: "calendar", // calendar | harm | series | seasonal | ranking | ml
   mapMode: "period", // period (promedio del rango) | month (mes evaluado) | ml (proyección ML)
+  harmMode: "after", // after (armonizado) | before (VIIRS sin corregir desde 2012)
   mlYear: 2030, // año de la proyección ML que se pinta en el mapa
   gridRes: "0.25", // tamaño de celda en grados: "0.25" | "0.10" | "0.05"
   gridCache: new Map(),
@@ -260,15 +261,30 @@ function parseCellsCsv(csvText, cellSize) {
         const col = parseInt(cellId.slice(sep + 1), 10);
         const lat = (row + 0.5) * cellSize - 90.0;
         const lon = (col + 0.5) * cellSize - 180.0;
-        cellObj = { cellId, row, col, lat, lon, subregion: classifySubregion(lat, lon), totalHarm: 0, records: [], byYm: new Map() };
+        cellObj = {
+          cellId,
+          row,
+          col,
+          lat,
+          lon,
+          subregion: classifySubregion(lat, lon),
+          totalHarm: 0,
+          totalRaw: 0,
+          records: [],
+          byYm: new Map(),
+          byYmRaw: new Map()
+        };
         cellsMeta.set(cellId, cellObj);
       }
       lastCellId = cellId;
     }
     if (!cellObj) continue;
+    const raw = snpp !== null ? snpp : aqua !== null ? aqua : harm;
     cellObj.totalHarm += harm;
-    cellObj.records.push({ cellId, year, month, ym, harm, aqua, snpp, source });
+    cellObj.totalRaw += raw;
+    cellObj.records.push({ cellId, year, month, ym, harm, raw, aqua, snpp, source });
     cellObj.byYm.set(ym, harm);
+    cellObj.byYmRaw.set(ym, raw);
     subregionTotals[cellObj.subregion] += harm;
   }
   return { cellsMeta, subregionTotals };
@@ -505,28 +521,51 @@ function syncPeriodParams() {
   }
 }
 
-/** Valor de una celda según el modo del mapa (promedio del periodo, mes elegido o pronóstico). */
-function getCellMapValue(cell) {
+/** Valor armonizado de una celda según el modo del mapa. */
+function getCellHarmValue(cell) {
   if (state.mapMode === "ml") return getMlCellAnnual(cell);
   if (state.mapMode === "month") {
-    return cell.byYm.get( state._focusYmKey || ymKey(state.focusYear, state.focusMonth) ) || 0;
+    return cell.byYm.get(state._focusYmKey || ymKey(state.focusYear, state.focusMonth)) || 0;
   }
-  // Promedio anual del rango; se guarda en la celda para no recalcularlo en cada repintado
   syncPeriodParams();
   const key = state._periodKey;
   if (cell._periodKey !== key) {
     let periodHarm = 0;
+    let periodRaw = 0;
     if (state._isFullPeriod) {
       periodHarm = cell.totalHarm;
+      periodRaw = cell.totalRaw;
     } else {
       for (const r of cell.records) {
-        if (r.year >= state.yearStart && r.year <= state.yearEnd) periodHarm += r.harm;
+        if (r.year >= state.yearStart && r.year <= state.yearEnd) {
+          periodHarm += r.harm;
+          periodRaw += r.raw;
+        }
       }
     }
     cell._periodKey = key;
     cell._periodAvg = periodHarm / state._periodNumYears;
+    cell._periodAvgRaw = periodRaw / state._periodNumYears;
   }
   return cell._periodAvg;
+}
+
+/** Valor sin corregir (VIIRS crudo desde feb 2012) de una celda según el modo del mapa. */
+function getCellRawValue(cell) {
+  if (state.mapMode === "ml") return getMlCellAnnual(cell);
+  if (state.mapMode === "month") {
+    return cell.byYmRaw.get(state._focusYmKey || ymKey(state.focusYear, state.focusMonth)) || 0;
+  }
+  getCellHarmValue(cell);
+  return cell._periodAvgRaw;
+}
+
+/** Valor de una celda según el modo del mapa y el interruptor Antes/Después. */
+function getCellMapValue(cell) {
+  if (state.mapMode !== "ml" && state.harmMode === "before") {
+    return getCellRawValue(cell);
+  }
+  return getCellHarmValue(cell);
 }
 
 function cellTooltipHtml(cell) {
@@ -536,7 +575,15 @@ function cellTooltipHtml(cell) {
     : state.mapMode === "month"
     ? t("tip.month", { month: MONTH_FULL_NAMES[state.focusMonth - 1], year: state.focusYear, v: fmtDays(v) })
     : t("tip.period", { from: state.yearStart, to: state.yearEnd, v: fmtDays(v) });
-  return body + `<br><span style='color:#64748b'>${t("tip.click")}</span>`;
+  let compareLine = "";
+  if (state.mapMode !== "ml" && state.harmMode === "before") {
+    const rawV = getCellRawValue(cell);
+    const harmV = getCellHarmValue(cell);
+    if (Math.abs(rawV - harmV) >= 0.05) {
+      compareLine = `<br><span style='color:#fca5a5'>${t("map.harm.tip.compare", { raw: fmtDays(rawV), harm: fmtDays(harmV) })}</span>`;
+    }
+  }
+  return body + compareLine + `<br><span style='color:#64748b'>${t("tip.click")}</span>`;
 }
 
 /**
@@ -600,6 +647,7 @@ function renderMapGrid() {
   });
 
   updateMapLegend();
+  updateMapHarmBanner();
 }
 
 function updateMapLegend() {
@@ -611,8 +659,12 @@ function updateMapLegend() {
     : state.mapMode === "month"
     ? `${MONTH_FULL_NAMES[state.focusMonth - 1]} ${state.focusYear}`
     : t("legend.period", { from: state.yearStart, to: state.yearEnd });
+  const beforeTag = state.mapMode !== "ml" && state.harmMode === "before"
+    ? `<div class="legend-harm-tag">${t("map.harm.tag.before")}</div>`
+    : "";
   el.innerHTML =
     `<div class="legend-when">${when}</div>` +
+    beforeTag +
     `<div class="legend-title">${t(scale.title)}</div>` +
     scale.classes
       .map((c, i) => {
@@ -623,6 +675,77 @@ function updateMapLegend() {
       })
       .join("") +
     (scaleFactor(state.mapMode) !== 1 ? `<div class="legend-note">${t("scale.perCell", { deg: fmtNum(state.meta.cell_size_deg, 2) })}</div>` : "");
+}
+
+/** Banner flotante sobre el mapa cuando se activa "⚠ Sin corregir (Antes)". */
+function updateMapHarmBanner() {
+  const banner = document.getElementById("mapHarmBanner");
+  const txt = document.getElementById("mapHarmBannerText");
+  if (!banner || !txt) return;
+  if (state.mapMode === "ml" || state.harmMode !== "before") {
+    banner.classList.add("hidden");
+    return;
+  }
+
+  if (state.mapMode === "month") {
+    const y = state.focusYear;
+    const m = state.focusMonth;
+    const hasViirs = y > 2012 || (y === 2012 && m >= 2);
+    if (!hasViirs) {
+      txt.innerHTML = t("map.harm.banner.pre2012", { when: `${MONTH_FULL_NAMES[m - 1]} ${y}` });
+      banner.classList.remove("hidden");
+      return;
+    }
+    const b = state.currentSeriesByYm.get(ymKey(y, m));
+    const harmVal = b ? b.harm : 0;
+    const rawVal = b ? b.raw : 0;
+    const diffPct = harmVal > 0 ? ((rawVal - harmVal) / harmVal) * 100 : 0;
+    txt.innerHTML = t("map.harm.banner.month", {
+      raw: fmtDays(rawVal),
+      harm: fmtDays(harmVal),
+      pct: signedPct(diffPct, 0)
+    });
+    banner.classList.remove("hidden");
+    return;
+  }
+
+  // Modo "period" (Lo habitual)
+  if (state.yearEnd < 2012) {
+    txt.innerHTML = t("map.harm.banner.pre2012", { when: `${state.yearStart}–${state.yearEnd}` });
+    banner.classList.remove("hidden");
+    return;
+  }
+  const numYears = Math.max(1, state.yearEnd - state.yearStart + 1);
+  let sumHarm = 0;
+  let sumRaw = 0;
+  state.currentSeriesByYm.forEach((b) => {
+    if (b.year >= state.yearStart && b.year <= state.yearEnd) {
+      sumHarm += b.harm;
+      sumRaw += b.raw;
+    }
+  });
+  const avgHarm = sumHarm / numYears;
+  const avgRaw = sumRaw / numYears;
+  const diffPct = avgHarm > 0 ? ((avgRaw - avgHarm) / avgHarm) * 100 : 0;
+  txt.innerHTML = t("map.harm.banner.period", {
+    raw: fmtDays(avgRaw),
+    harm: fmtDays(avgHarm),
+    pct: signedPct(diffPct, 0)
+  });
+  banner.classList.remove("hidden");
+}
+
+/** Alterna entre Después (Armonizado) y Antes (VIIRS sin corregir). */
+function setHarmMode(mode) {
+  state.harmMode = mode === "before" ? "before" : "after";
+  document.querySelectorAll(".harm-mode-btn").forEach((b) => {
+    const active = b.dataset.harm === state.harmMode;
+    b.classList.toggle("active", active);
+    b.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  renderMapGrid();
+  refreshOpenTooltips();
+  updateAllViews();
 }
 
 /* -------------------------------------------------------------------------
@@ -914,6 +1037,7 @@ function aggregateSelectedCells() {
         year: y,
         month: m,
         harm: 0.0,
+        raw: 0.0,
         aqua: 0,
         snpp: y >= 2012 && !(y === 2012 && m === 1) ? 0 : null,
         hasNrt: false
@@ -928,6 +1052,7 @@ function aggregateSelectedCells() {
       const bucket = seriesByYm.get(r.ym);
       if (!bucket) continue;
       bucket.harm += r.harm;
+      bucket.raw += r.raw;
       if (r.aqua !== null) bucket.aqua = (bucket.aqua || 0) + r.aqua;
       if (r.snpp !== null) bucket.snpp = (bucket.snpp || 0) + r.snpp;
       if (r.source === "snpp_converted_nrt" || r.source === "snpp_nrt") bucket.hasNrt = true;
@@ -1389,10 +1514,12 @@ function renderSeasonalChart() {
 function updateSummary(histStats) {
   const current = state.currentSeriesByYm.get(ymKey(state.focusYear, state.focusMonth));
   const stat = histStats[state.focusMonth] || { median: 0, mean: 0, p25: 0, p75: 0 };
-  const value = current ? current.harm : 0;
+  const isBefore = state.harmMode === "before";
+  const value = current ? (isBefore ? current.raw : current.harm) : 0;
   const monthName = MONTH_FULL_NAMES[state.focusMonth - 1];
   const typical = t("sum.typical", { month: monthName, monthLower: monthName.toLowerCase() });
   const status = classifyVsNormal(value, stat);
+  updateMapHarmBanner();
 
   setText("sumTitle", `${monthName} ${state.focusYear} · ${zoneName(state.preset)}`);
   setText("sumValue", fmtDays(value));
@@ -2339,14 +2466,16 @@ function renderCalendarChart() {
   const hist = computeHistoricalStatsByMonth();
   const data = [];
   let maxVal = 0;
+  const isBefore = state.harmMode === "before";
 
   years.forEach((yStr, yIdx) => {
     const y = parseInt(yStr, 10);
     for (let m = 1; m <= 12; m++) {
       if (y === 2026 && m > 10) continue;
       const bucket = state.currentSeriesByYm.get(ymKey(y, m));
-      const val = bucket ? bucket.harm : 0;
-      if (val > maxVal) maxVal = val;
+      const harmVal = bucket ? bucket.harm : 0;
+      const val = bucket ? (isBefore ? bucket.raw : bucket.harm) : 0;
+      if (harmVal > maxVal) maxVal = harmVal;
       data.push([m - 1, yIdx, round1(val)]);
     }
   });
@@ -2756,6 +2885,15 @@ function bindEvents() {
   document.querySelectorAll(".map-mode-btn").forEach((btn) => {
     btn.addEventListener("click", () => setMapMode(btn.dataset.mode));
   });
+
+  document.querySelectorAll(".harm-mode-btn").forEach((btn) => {
+    btn.addEventListener("click", () => setHarmMode(btn.dataset.harm));
+  });
+
+  const harmFixBtn = document.getElementById("btnHarmFix");
+  if (harmFixBtn) {
+    harmFixBtn.addEventListener("click", () => setHarmMode("after"));
+  }
 
   const coordForm = document.getElementById("coordForm");
   if (coordForm) coordForm.addEventListener("submit", applyCoordForm);
