@@ -21,6 +21,7 @@ import csv
 import glob
 import json
 import math
+import zipfile
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
@@ -241,9 +242,14 @@ def main() -> None:
     args = parser.parse_args()
 
     allowed_years = set(range(args.start_year, args.end_year + 1))
-    # 2026 solo se incluye si existen sus CSV (Archive Download): si faltan, los metadatos
-    # deben decir que los datos llegan hasta end_year, no inventar cobertura 2026.
-    has_2026_files = any((RAW_DIR / "2026").glob("*.csv")) if (RAW_DIR / "2026").exists() else False
+    # 2026 solo se incluye si existen sus CSV (o sus ZIP originales de Archive Download):
+    # si están los ZIP pero aún no se extrajeron los CSV, los descomprimimos automáticamente.
+    dir_2026 = RAW_DIR / "2026"
+    if args.include_2026 and dir_2026.exists() and not any(dir_2026.glob("*.csv")):
+        for zpath in sorted(dir_2026.glob("*.zip")):
+            with zipfile.ZipFile(zpath, "r") as zf:
+                zf.extractall(dir_2026)
+    has_2026_files = any(dir_2026.glob("*.csv")) if dir_2026.exists() else False
     if args.include_2026 and not has_2026_files:
         print("AVISO: no hay CSV de 2026 en data/raw/2026/; el dataset llegará hasta", args.end_year)
     args.include_2026 = args.include_2026 and has_2026_files

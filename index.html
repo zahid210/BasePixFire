@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
 
-  <link rel="stylesheet" href="styles.css?v=main3" />
+  <link rel="stylesheet" href="styles.css?v=main6" />
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -224,12 +224,12 @@
 
         <article class="time-subblock block-calendar">
           <div class="tab-bar" role="tablist" aria-label="Gráficos" data-i18n-aria="tabs.aria">
-            <button type="button" role="tab" class="tab-btn active" data-view="calendar" aria-selected="true" data-i18n="tab.calendar">Calendario</button>
-            <button type="button" role="tab" class="tab-btn tab-key" data-view="harm" aria-selected="false" data-i18n="tab.harm">Armonización</button>
-            <button type="button" role="tab" class="tab-btn" data-view="series" aria-selected="false" data-i18n="tab.series">Evolución</button>
-            <button type="button" role="tab" class="tab-btn" data-view="seasonal" aria-selected="false" data-i18n="tab.seasonal">¿Es normal?</button>
-            <button type="button" role="tab" class="tab-btn" data-view="ranking" aria-selected="false" data-i18n="tab.ranking">Peores años</button>
-            <button type="button" role="tab" class="tab-btn" data-view="ml" aria-selected="false" data-i18n="tab.ml">Pronóstico (técnico)</button>
+            <button type="button" role="tab" id="tab-calendar" aria-controls="chartCalendar" class="tab-btn active" data-view="calendar" aria-selected="true" data-i18n="tab.calendar">Calendario</button>
+            <button type="button" role="tab" id="tab-harm" aria-controls="harmView" class="tab-btn tab-key" data-view="harm" aria-selected="false" data-i18n="tab.harm">Armonización</button>
+            <button type="button" role="tab" id="tab-series" aria-controls="chartSeries" class="tab-btn" data-view="series" aria-selected="false" data-i18n="tab.series">Evolución</button>
+            <button type="button" role="tab" id="tab-seasonal" aria-controls="chartSeasonal" class="tab-btn" data-view="seasonal" aria-selected="false" data-i18n="tab.seasonal">¿Es normal?</button>
+            <button type="button" role="tab" id="tab-ranking" aria-controls="rankingView" class="tab-btn" data-view="ranking" aria-selected="false" data-i18n="tab.ranking">Peores años</button>
+            <button type="button" role="tab" id="tab-ml" aria-controls="mlView" class="tab-btn" data-view="ml" aria-selected="false" data-i18n="tab.ml">Pronóstico (técnico)</button>
           </div>
 
           <div class="view-head">
@@ -251,12 +251,12 @@
           </div>
 
           <div class="calendar-chart-wrap">
-            <div id="chartCalendar" class="chart-canvas view-panel" data-view="calendar" role="img" aria-label="Calendario de fuego por año y mes" data-i18n-aria="chart.calendar.aria"></div>
-            <div id="chartSeries" class="chart-canvas view-panel hidden" data-view="series" role="img" aria-label="Evolución mensual de los días con fuego" data-i18n-aria="chart.series.aria"></div>
-            <div id="chartSeasonal" class="chart-canvas view-panel hidden" data-view="seasonal" role="img" aria-label="Meses del año elegido frente a lo normal" data-i18n-aria="chart.seasonal.aria"></div>
-            <div id="rankingView" class="chart-canvas view-panel ranking-panel hidden" data-view="ranking"></div>
-            <div id="harmView" class="chart-canvas view-panel harm-panel hidden" data-view="harm"></div>
-            <div id="mlView" class="chart-canvas view-panel ml-panel hidden" data-view="ml"></div>
+            <div id="chartCalendar" class="chart-canvas view-panel" data-view="calendar" role="tabpanel" aria-labelledby="tab-calendar" aria-label="Calendario de fuego por año y mes" data-i18n-aria="chart.calendar.aria"></div>
+            <div id="chartSeries" class="chart-canvas view-panel hidden" data-view="series" role="tabpanel" aria-labelledby="tab-series" aria-label="Evolución mensual de los días con fuego" data-i18n-aria="chart.series.aria"></div>
+            <div id="chartSeasonal" class="chart-canvas view-panel hidden" data-view="seasonal" role="tabpanel" aria-labelledby="tab-seasonal" aria-label="Meses del año elegido frente a lo normal" data-i18n-aria="chart.seasonal.aria"></div>
+            <div id="rankingView" class="chart-canvas view-panel ranking-panel hidden" data-view="ranking" role="tabpanel" aria-labelledby="tab-ranking"></div>
+            <div id="harmView" class="chart-canvas view-panel harm-panel hidden" data-view="harm" role="tabpanel" aria-labelledby="tab-harm"></div>
+            <div id="mlView" class="chart-canvas view-panel ml-panel hidden" data-view="ml" role="tabpanel" aria-labelledby="tab-ml"></div>
             <span id="calendarSummarySR" class="sr-only"></span>
           </div>
         </article>
@@ -286,8 +286,8 @@
   <script src="data/processed/ml_bundle.js?v=main4"></script>
 
   <!-- Textos ES/EN (debe cargarse antes de app.js) -->
-  <script src="i18n.js?v=main5"></script>
+  <script src="i18n.js?v=main6"></script>
   <!-- Lógica y renderizado cliente -->
-  <script src="app.js?v=main5"></script>
+  <script src="app.js?v=main6"></script>
 </body>
 </html>

@@ -498,7 +498,13 @@ function renderMapGrid() {
         [[cell.lat - half, cell.lon - half], [cell.lat + half, cell.lon + half]],
         { weight: unselWeight }
       );
-      rect.bindTooltip(() => cellTooltipHtml(cell), { sticky: true });
+      if (cs >= 0.10) {
+        rect.bindTooltip(() => cellTooltipHtml(cell), { sticky: true });
+      } else {
+        rect.on("mouseover", () => {
+          if (!rect.getTooltip()) rect.bindTooltip(() => cellTooltipHtml(cell), { sticky: true }).openTooltip();
+        });
+      }
       rect.on("click", (e) => openCellPopup(cell, e.latlng));
       cellLayers.set(cell.cellId, rect);
       gridLayerGroup.addLayer(rect);
@@ -869,7 +875,7 @@ function updateAllViews() {
 }
 
 /** Cambia el mes evaluado desde cualquier vista (calendario, serie, ciclo, ranking). */
-function setFocus(year, month) {
+function setFocus(year, month, syncMap = true) {
   if (year === 2026 && month > 10) return; // sin datos después de oct 2026
   state.focusYear = year;
   state.focusMonth = month;
@@ -878,8 +884,12 @@ function setFocus(year, month) {
   if (mSel) mSel.value = String(month);
   if (ySel) ySel.value = String(year);
   syncFocusMonthOptions();
+  if (syncMap && state.mapMode === "period" && !state.animTimer) {
+    setMapMode("month");
+  } else if (state.mapMode === "month") {
+    renderMapGrid();
+  }
   updateAllViews();
-  if (state.mapMode === "month") renderMapGrid();
 }
 
 /* =========================================================================
@@ -904,9 +914,9 @@ function switchView(view) {
   document.querySelectorAll(".view-panel").forEach((panel) => {
     panel.classList.toggle("hidden", panel.dataset.view !== view);
   });
-  // "Imagen del gráfico" solo aplica a las vistas que son un gráfico
+  // "Imagen del gráfico" solo se deshabilita en vistas sin gráfico ECharts
   const pngBtn = document.getElementById("btnPng");
-  if (pngBtn) pngBtn.disabled = ["ranking", "ml", "harm"].includes(view);
+  if (pngBtn) pngBtn.disabled = ["ranking"].includes(view);
   renderActiveView();
 }
 
@@ -2352,9 +2362,15 @@ function downloadCellsCsv() {
   triggerCsvDownload(`pixfire_bolivia_celdas_${state.preset}_${state.yearStart}_${state.yearEnd}.csv`, csv);
 }
 
-/** Descarga el gráfico visible (calendario, serie o ciclo) como PNG. */
+/** Descarga el gráfico visible (calendario, serie, ciclo, armonización o pronóstico) como PNG. */
 function downloadActiveChartPng() {
-  const charts = { calendar: chartCalendar, series: chartSeries, seasonal: chartSeasonal };
+  const charts = {
+    calendar: chartCalendar,
+    series: chartSeries,
+    seasonal: chartSeasonal,
+    harm: chartHarmValidation,
+    ml: chartMlProjection
+  };
   const chart = charts[state.activeView];
   if (!chart) return;
   const url = chart.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" });
@@ -2504,6 +2520,9 @@ function bindEvents() {
       const newRes = e.target.value;
       if (newRes === state.gridRes) return;
       gridSel.disabled = true;
+      const mapEl = document.getElementById("map");
+      if (mapEl) mapEl.setAttribute("data-loading", t("grid.loading", { deg: fmtNum(parseFloat(newRes), 2) }));
+      await new Promise((r) => setTimeout(r, 40));
       try {
         await loadAllData(newRes);
         applyGridYearLimits();
@@ -2525,6 +2544,7 @@ function bindEvents() {
         }
       } finally {
         gridSel.disabled = false;
+        if (mapEl) mapEl.removeAttribute("data-loading");
       }
     });
   }
@@ -2584,8 +2604,19 @@ function bindEvents() {
     });
   }
 
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
+  const tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
+  tabButtons.forEach((btn, idx) => {
     btn.addEventListener("click", () => switchView(btn.dataset.view));
+    btn.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      e.preventDefault();
+      const visible = tabButtons.filter((b) => !b.classList.contains("hidden"));
+      const curIdx = visible.indexOf(btn);
+      if (curIdx < 0) return;
+      const nextIdx = (curIdx + (e.key === "ArrowRight" ? 1 : -1) + visible.length) % visible.length;
+      visible[nextIdx].focus();
+      switchView(visible[nextIdx].dataset.view);
+    });
   });
 
   // Botones ES | EN

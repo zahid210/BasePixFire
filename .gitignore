@@ -1,5 +1,8 @@
-# Datos crudos pesados (FIRMS CSVs y ZIPs)
-data/raw/
+# Datos crudos pesados (FIRMS CSVs), conservando los 2 ZIP de Archive 2026 (~2,1 MB) para reproducibilidad completa
+data/raw/*
+!data/raw/2026/
+data/raw/2026/*
+!data/raw/2026/*.zip
 
 # Variables de entorno y credenciales
 .env

@@ -59,6 +59,8 @@ Incluso contando celdas-día, VIIRS sigue activando más celdas-día que MODIS p
    - El factor $k_m$ asume que la proporción entre fuegos pequeños (solo vistos por VIIRS) y fuegos medianos/grandes (vistos por ambos) en cada mes del año se mantiene similar después de 2021. Si una regulación futura elimina las quemas pequeñas pero deja los grandes incendios forestales, el cociente real cambiaría.
 3. **Heterogeneidad espacial dentro del país:**
    - Un factor $k_m$ calculado para toda Bolivia está dominado por los Llanos y la Chiquitanía (donde ocurre >80 % del fuego). En el Altiplano o los valles andinos, donde los fuegos son más pequeños y dispersos, el cociente real entre sensores puede diferir del promedio nacional.
+4. **Geometría de barrido (`scan`/`track`) y asimetría diurna/nocturna (`daynight`):**
+   - El tamaño nominal de MODIS (1 km × 1 km en el nadir) crece hasta ~4,8 km × 2 km (~10 km²) en el borde del barrido ($\pm 55^\circ$), mientras que VIIRS aplica un esquema de agregación de píxeles a bordo (3×1, 2×1, 1×1) que mantiene la huella casi constante (< 1,6 km). Asimismo, la ganancia de sensibilidad de VIIRS 375 m frente a MODIS es mayor en pasadas nocturnas (~01:30 a. m.) que diurnas (~01:30 p. m.). Al calibrar $k_m$ sobre totales mensuales combinados, estos efectos geométricos y nocturnos quedan absorbidos en el promedio mensual de ~60 órbitas.
 
 ### 3.2 ¿Qué casos borde podrían romperlo y cómo nos protegemos?
 1. **Áreas de interés (AOI) diminutas (p. ej. 1 o 2 celdas):**
@@ -69,7 +71,7 @@ Incluso contando celdas-día, VIIRS sigue activando más celdas-día que MODIS p
    - **Mitigación:** salvaguarda automática de muestra mínima ($\ge 500$ celdas-día en calibración; si no se cumple, aplica el factor anual global).
 3. **Datos de 2026 en modo Near Real-Time (NRT):**
    - Los últimos meses de 2026 aún no tienen el reprocesamiento científico estándar (`ML`) que etiqueta volcanes e industrias (`type`).
-   - **Mitigación:** se marcan explícitamente como `"snpp_converted_nrt"` (provisionales) en la tabla y en la visualización.
+   - **Mitigación y verificación empírica:** se marcan explícitamente como `"snpp_converted_nrt"` (provisionales) en la tabla y en la visualización. Además, verificamos en el registro histórico 2012–2026 las microceldas de 0,01° con fuentes estáticas puras ($\ge 5$ detecciones `type != 0` y ninguna `type == 0`: 128 ubicaciones en Bolivia): en los archivos NRT de 2026 solo cayeron 10 detecciones en esas ubicaciones (< 0,05 % del total de 2026), por lo que el impacto sobre la serie regional es despreciable.
 4. **Cobertura de nubes:**
    - Ni los archivos CSV de MODIS ni los de VIIRS reportan qué días estuvo nublado (MODIS User Guide §7.1.1). Un valor `0` significa "0 fuegos detectados en días despejados", no necesariamente ausencia absoluta de fuego bajo las nubes. Trabajar a escala **mensual** reduce drásticamente este problema porque promedia ~30 pasadas diurnas y ~30 nocturnas por mes.
 

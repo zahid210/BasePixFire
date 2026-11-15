@@ -3,8 +3,8 @@
   --bg-surface: #ffffff;
   --bg-subtle: #f1f5f9;
   --text-main: #0f172a;
-  --text-muted: #64748b;
-  --text-dim: #94a3b8;
+  --text-muted: #475569;
+  --text-dim: #64748b;
   --border-line: #e2e8f0;
   --border-strong: #cbd5e1;
 
@@ -244,7 +244,9 @@ select:hover {
   right: 0;
   top: calc(100% + 6px);
   width: 280px;
-  background-color: var(--bg-surface);
+  background-color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
@@ -396,11 +398,30 @@ select:hover {
   background-color: var(--bg-subtle);
 }
 
+.map-canvas[data-loading]::after {
+  content: attr(data-loading);
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .map-legend {
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 8px 10px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
   font-family: var(--font-main);
   font-size: 11.5px;
   color: var(--text-main);
@@ -965,7 +986,7 @@ select:hover {
   gap: 6px 14px;
   margin: 0 0 8px;
   padding: 0;
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.45;
   color: var(--text-main);
 }
@@ -1003,7 +1024,7 @@ select:hover {
 .ml-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 10px;
+  font-size: 11px;
   margin-bottom: 6px;
 }
 
@@ -1030,7 +1051,7 @@ select:hover {
   font-weight: 700;
   color: var(--text-muted);
   background-color: var(--bg-subtle);
-  font-size: 9.5px;
+  font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -1114,7 +1135,7 @@ select:hover {
   padding: 8px 8px 8px 30px;
   background-color: var(--bg-subtle);
   border-radius: 6px;
-  font-size: 10px;
+  font-size: 10.5px;
   line-height: 1.45;
 }
 
@@ -1182,7 +1203,7 @@ select:hover {
   border: 1px solid var(--border-line);
   border-left: 4px solid var(--color-teal);
   border-radius: 6px;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .harm-result.bad {
@@ -1225,11 +1246,11 @@ select:hover {
 
 .harm-result-note {
   color: var(--text-dim);
-  font-size: 9.5px;
+  font-size: 10.5px;
 }
 
 .harm-aoi {
-  font-size: 10.5px;
+  font-size: 11px;
   margin: 6px 0;
   padding: 6px 8px;
   background-color: var(--bg-subtle);
@@ -1255,7 +1276,7 @@ select:hover {
 .legend-note {
   max-width: 220px;
   margin-top: 4px;
-  font-size: 9.5px;
+  font-size: 10.5px;
   line-height: 1.35;
   color: var(--text-muted);
 }

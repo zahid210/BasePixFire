@@ -275,14 +275,15 @@ def poisson_deviance(y, mu):
 def evaluate(key, name, test, mu, score):
     y = test["y"].to_numpy()
     month_tot = test.assign(mu=mu).groupby(["year", "month"])[["y", "mu"]].sum()
+    has_both_classes = len(np.unique(y > 0)) > 1
     return {
         "key": key,
         "model": name,
         "poisson_deviance": round(poisson_deviance(y, mu), 4),
         "mae_cell_month": round(float(np.mean(np.abs(y - mu))), 4),
-        "auc_fire_occurrence": round(float(roc_auc_score(y > 0, score)), 4),
+        "auc_fire_occurrence": round(float(roc_auc_score(y > 0, score)), 4) if has_both_classes else 0.0,
         "mae_bolivia_monthly_total": round(float((month_tot["y"] - month_tot["mu"]).abs().mean()), 1),
-        "total_bias_pct": round(float((mu.sum() - y.sum()) / y.sum() * 100), 2),
+        "total_bias_pct": round(float((mu.sum() - y.sum()) / y.sum() * 100), 2) if y.sum() > 0 else 0.0,
     }
 
 
