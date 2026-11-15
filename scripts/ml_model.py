@@ -173,17 +173,17 @@ def build_features(cell_ids, cube, years, adj):
 
 def design_matrix(df):
     """Matriz para los GLM: mes y 'años desde el último fuego' como categorías."""
-    X = pd.DataFrame({
+    x_mat = pd.DataFrame({
         "const": 1.0,
         "log_clim": df["log_clim"],
         "log_last_same": df["log_last_same"],
         "log_neigh": df["log_neigh"],
     })
     for b in (2, 3, 4, 6):  # referencia: fuego el año pasado (1 año)
-        X[f"ys_{b}"] = (df["ys_bucket"] == b).astype(float)
+        x_mat[f"ys_{b}"] = (df["ys_bucket"] == b).astype(float)
     for m in range(2, 13):  # referencia: enero
-        X[f"m_{m}"] = (df["month"] == m).astype(float)
-    return X
+        x_mat[f"m_{m}"] = (df["month"] == m).astype(float)
+    return x_mat
 
 
 HGB_COLS = ["month", "log_clim", "log_last_same", "ys_bucket", "log_neigh"]
@@ -209,19 +209,19 @@ def estimate_tweedie_power(y, mu, n_bins=20):
 
 
 def fit_models(train):
-    X = design_matrix(train)
+    x_mat = design_matrix(train)
     y = train["y"].round().astype(int)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        nb = sm.NegativeBinomial(y, X).fit(method="lbfgs", maxiter=500, disp=False)
-        occ = sm.Logit((y > 0).astype(int), X).fit(method="lbfgs", maxiter=500, disp=False)
+        nb = sm.NegativeBinomial(y, x_mat).fit(method="lbfgs", maxiter=500, disp=False)
+        occ = sm.Logit((y > 0).astype(int), x_mat).fit(method="lbfgs", maxiter=500, disp=False)
         pos = y > 0
-        inten = sm.NegativeBinomial(y[pos], X[pos]).fit(method="lbfgs", maxiter=500, disp=False)
+        inten = sm.NegativeBinomial(y[pos], x_mat[pos]).fit(method="lbfgs", maxiter=500, disp=False)
 
         mu_nb, _ = predict_nb(nb, train)
         p, p_raw, phi_bins, var_points = estimate_tweedie_power(train["y"].to_numpy(), mu_nb)
-        tw = sm.GLM(train["y"], X, family=sm.families.Tweedie(
+        tw = sm.GLM(train["y"], x_mat, family=sm.families.Tweedie(
             var_power=p, link=sm.families.links.Log())).fit()
 
     hgb = HistGradientBoostingRegressor(
@@ -237,18 +237,18 @@ def fit_models(train):
 
 
 def predict_nb(model, df):
-    X = design_matrix(df)
+    x_mat = design_matrix(df)
     params = model.params
     alpha = float(params["alpha"])
-    mu = np.exp(X.to_numpy() @ params.drop("alpha").to_numpy())
+    mu = np.exp(x_mat.to_numpy() @ params.drop("alpha").to_numpy())
     p_fire = 1.0 - (1.0 + alpha * mu) ** (-1.0 / alpha)
     return mu, p_fire
 
 
 def predict_tweedie(models, df, params=None):
-    X = design_matrix(df).to_numpy()
+    x_mat = design_matrix(df).to_numpy()
     beta = models["tw"].params.to_numpy() if params is None else params
-    mu = np.exp(X @ beta)
+    mu = np.exp(x_mat @ beta)
     p, phi = models["tw_power"], models["tw_phi"]
     lam = mu ** (2 - p) / (phi * (2 - p))   # nº esperado de "eventos" del Poisson compuesto
     return mu, 1.0 - np.exp(-lam)           # P(y > 0) = 1 - P(ningún evento)

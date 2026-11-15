@@ -8,8 +8,10 @@
  *   - data/processed/metadata.json
  *   - data/processed/monthly_cells.csv
  *   - data/processed/validation.csv
- *   - data/processed/data_bundle.js (fallback autónomo compatible con file:// y http://)
+ *   - data/processed/data_bundle.js (fallback autónomo compatible con file:// y servidor local)
  */
+/* global L, turf, echarts, t, setLang, applyStaticI18n */
+// noinspection JSUnresolvedReference,JSUnusedGlobalSymbols
 
 // Textos según el idioma (i18n.js). Se recalculan al cambiar ES/EN en refreshLangConstants().
 let MONTH_NAMES = t("months.short");
@@ -235,7 +237,7 @@ function parseCellsCsv(csvText, cellSize) {
   const cellsMeta = new Map();
   const subregionTotals = { chiquitania_llanos: 0, amazonia_beni_norte: 0, andina_valles: 0 };
   const lines = csvText.trim().split("\n");
-  let lastCellId = "";
+  let lastCellId = null;
   let cellObj = null;
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
@@ -263,6 +265,7 @@ function parseCellsCsv(csvText, cellSize) {
       }
       lastCellId = cellId;
     }
+    if (!cellObj) continue;
     cellObj.totalHarm += harm;
     cellObj.records.push({ cellId, year, month, ym, harm, aqua, snpp, source });
     cellObj.byYm.set(ym, harm);
@@ -1141,24 +1144,24 @@ function renderSeriesChart() {
       }
     : undefined;
 
-  const series = [
-    {
-      name: compare ? t("series.final") : t("series.days"),
-      type: "line",
-      data: rows.map((r) => round1(r.harm)),
-      showSymbol: false,
-      z: 5,
-      lineStyle: { width: 2.2, color: "#0f172a" },
-      itemStyle: { color: "#0f172a" },
-      areaStyle: compare ? undefined : { color: "rgba(234, 88, 12, 0.12)" },
-      markArea: {
-        silent: true,
-        label: { fontSize: 10, color: "#475569", position: "insideTop" },
-        data: areas
-      },
-      markLine: focusLine
-    }
-  ];
+  /** @type {Array<Object>} */
+  const series = [];
+  series.push({
+    name: compare ? t("series.final") : t("series.days"),
+    type: "line",
+    data: rows.map((r) => round1(r.harm)),
+    showSymbol: false,
+    z: 5,
+    lineStyle: { width: 2.2, color: "#0f172a" },
+    itemStyle: { color: "#0f172a" },
+    areaStyle: compare ? undefined : { color: "rgba(234, 88, 12, 0.12)" },
+    markArea: {
+      silent: true,
+      label: { fontSize: 10, color: "#475569", position: "insideTop" },
+      data: areas
+    },
+    markLine: focusLine
+  });
 
   if (compare) {
     series.push(
@@ -1398,7 +1401,7 @@ function updateSummary(histStats) {
   const markerEl = document.querySelector(".track-current-marker");
   if (markerEl) {
     const { p25, median: med, p75 } = stat;
-    let pos = 50;
+    let pos;
     if (p75 <= 0 && value <= 0) {
       pos = 25;
     } else if (value <= p25) {
@@ -1742,14 +1745,14 @@ function buildMlMetricsTable(ml) {
 
 function renderMlEffectsChart(ml) {
   const dom = document.getElementById("chartMlEffects");
-  if (!dom) return;
+  if (!dom || !ml) return;
   if (!chartMlEffects) chartMlEffects = echarts.init(dom);
   const ysLabels = t("ml.ys");
 
   const series = [];
   [["occurrence", t("ml.eff.occ"), -5], ["intensity", t("ml.eff.int"), 5]]
     .forEach(([part, name, dx]) => {
-      const terms = ML_YS_TERMS.map((x) => mlTerm(part, x));
+      const terms = ML_YS_TERMS.map((x) => ml.effects[part].terms.find((item) => item.term === x));
       const color = ML_COLORS[part];
       series.push({
         name, type: "line", color, symbolSize: 8, lineStyle: { width: 2 },
@@ -1760,7 +1763,7 @@ function renderMlEffectsChart(ml) {
       series.push({
         name, type: "custom", color, z: 2, tooltip: { show: false },
         data: terms.map((x, i) => [i + 1, x.ci_low, x.ci_high]),
-        renderItem: (params, api) => {
+        renderItem: (_params, api) => {
           const lo = api.coord([api.value(0), api.value(1)]);
           const hi = api.coord([api.value(0), api.value(2)]);
           const x = lo[0] + dx;
@@ -2730,7 +2733,7 @@ function bindEvents() {
   }
 
   const tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
-  tabButtons.forEach((btn, idx) => {
+  tabButtons.forEach((btn) => {
     btn.addEventListener("click", () => switchView(btn.dataset.view));
     btn.addEventListener("keydown", (e) => {
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
