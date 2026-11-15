@@ -2,7 +2,7 @@
 
 **Proyecto para el NASA International Space Apps Challenge 2026**  
 **Reto:** *Harmonization of MODIS and VIIRS Hot Spots*  
-**Licencia:** [Apache License 2.0](LICENSE) · **Referencias y Atribuciones:** [REFERENCES.md](REFERENCES.md) · **Metodología Científica:** [docs/METODO.md](docs/METODO.md)
+**Licencia:** [Apache License 2.0](LICENSE) · **Datos oficiales:** [NASA FIRMS](https://www.earthdata.nasa.gov/data/tools/firms)
 
 ---
 
@@ -70,9 +70,7 @@ python3 scripts/ml_model.py --n-sims 200
 - [scripts/download_firms.py](scripts/download_firms.py) y [scripts/build_dataset.py](scripts/build_dataset.py): Pipeline de descarga, limpieza física (H3), agregación a celdas-día (H1), calibración estacional (H2) y validación cruzada fuera de muestra.
 - [scripts/ml_model.py](scripts/ml_model.py): Modelado GLM Tweedie, Binomial Negativa, Hurdle (ocurrencia vs. intensidad) y simulación Monte Carlo 2027–2030.
 - [data/processed/](data/processed): Salidas del pipeline para `0,25°`, `grid_0.10/`, `grid_0.05/` y resultados del modelo ML (`ml_results.json`, `ml_bundle.js`).
-- [docs/METODO.md](docs/METODO.md): Especificación científica del método de armonización, evaluación crítica de sesgos y limitaciones, validación multirresolución, documentación del modelo ML y guion de defensa ante el jurado.
-- [ARCHITECTURE.md](ARCHITECTURE.md) y [DATA_CONTRACT.md](DATA_CONTRACT.md): Arquitectura y contrato de datos v3.
-- [REFERENCES.md](REFERENCES.md) y [LICENSE](LICENSE): Citación completa de fuentes de NASA/NOAA, artículos científicos y licencias de código abierto exigidas por las bases de NASA Space Apps 2026.
+- [LICENSE](LICENSE): Licencia de código abierto Apache 2.0 exigida por las bases de NASA Space Apps 2026.
 
 ---
 

@@ -17,3 +17,8 @@ venv/
 # Sistema y editores
 .DS_Store
 *.swp
+
+# Documentos internos (.md), conservando únicamente README.md en el repositorio
+*.md
+!README.md
+docs/
