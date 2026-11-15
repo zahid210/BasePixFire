@@ -744,7 +744,6 @@ function setHarmMode(mode) {
     b.setAttribute("aria-pressed", active ? "true" : "false");
   });
   renderMapGrid();
-  refreshOpenTooltips();
   updateAllViews();
 }
 
