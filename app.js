@@ -473,18 +473,14 @@ function getScaleColor(mode, value, precomputedClasses) {
   return classes[classes.length - 1].color;
 }
 
-/** Precalcula el divisor de años activos y si el rango cubre todo el historial de la grilla. */
+/** Precalcula el divisor de años calendario y si el rango cubre todo el historial de la grilla. */
 function syncPeriodParams() {
   const endY = gridEndYear();
   const key = `${state.yearStart}_${state.yearEnd}_${endY}`;
   if (state._periodSyncKey !== key) {
-    let activeMonths = 0;
-    for (let y = state.yearStart; y <= state.yearEnd; y++) {
-      activeMonths += y === 2026 ? 10 : 12;
-    }
     state._periodSyncKey = key;
     state._periodKey = `${state.yearStart}_${state.yearEnd}`;
-    state._periodNumYears = Math.max(0.833, activeMonths / 12.0);
+    state._periodNumYears = Math.max(1, state.yearEnd - state.yearStart + 1);
     state._isFullPeriod = state.yearStart <= 2003 && state.yearEnd >= endY;
   }
 }
@@ -718,9 +714,12 @@ function openCellPopup(cell, latlng) {
   const totals = years.map(() => 0);
   for (const r of cell.records) if (r.year <= lastYear) totals[r.year - 2003] += r.harm;
 
-  // Años completos (2026 solo tiene ene–oct, así que no entra en el promedio ni en el "peor año")
+  // Promedio de años completos (2003–2025); en "peor año" entra 2026* si ya superó al resto
   const full = lastYear === 2026 ? totals.slice(0, totals.length - 1) : totals;
-  const peakIdx = full.indexOf(Math.max(...full));
+  const maxAll = Math.max(...totals);
+  const maxFull = Math.max(...full);
+  const peakIdx = maxAll > maxFull ? totals.indexOf(maxAll) : full.indexOf(maxFull);
+  const peakYearLabel = `${years[peakIdx]}${years[peakIdx] === 2026 ? "*" : ""}`;
   const avg = full.reduce((a, b) => a + b, 0) / full.length;
   const cs = state.meta ? state.meta.cell_size_deg : 0.25;
   const kmLabel = cs <= 0.05 ? fmtNum(5.5, 1) : cs <= 0.10 ? "11" : "27";
@@ -734,7 +733,7 @@ function openCellPopup(cell, latlng) {
     <div class="cp-axis"><span>2003</span><span>${lastYear}${lastYear === 2026 ? "*" : ""}</span></div>
     <div class="cp-stats">
       <div><span>${t("cp.avg")}</span><b>${t("cp.days", { v: fmtDays(avg) })}</b></div>
-      <div><span>${t("cp.peak")}</span><b>${years[peakIdx]} (${t("cp.days", { v: fmtDays(full[peakIdx]) })})</b></div>
+      <div><span>${t("cp.peak")}</span><b>${peakYearLabel} (${t("cp.days", { v: fmtDays(totals[peakIdx]) })})</b></div>
     </div>
     <div class="cp-note">${t("cp.note")}</div>
     <button type="button" class="btn-action primary cp-btn">${t("cp.btn")}</button>`;
@@ -1850,16 +1849,28 @@ function renderMlProjectionChart(ml) {
   const years = [];
   for (let y = 2003; y <= lastProj; y++) years.push(y);
 
-  // Historia: suma anual del AOI con los mismos datos que el resto de la app
-  const histByYear = new Map();
-  state.currentSeriesByYm.forEach((b) => {
-    if (b.year < firstProj) histByYear.set(b.year, (histByYear.get(b.year) || 0) + b.harm);
-  });
-
   // Proyección: bandas exactas para los presets; para polígonos propios solo la media
   const presetKey = state.preset !== "custom" && ml.projection[state.preset] ? state.preset : null;
   const projRows = presetKey ? ml.projection[presetKey] : null;
   const mlCellIds = mlCellsForSelection(ml);
+
+  // Historia en la misma unidad del modelo (grilla de 0,25°), sea cual sea la grilla activa del mapa
+  const histByYear = new Map();
+  const g025 = state.gridCache.get("0.25");
+  if ((state.gridRes || "0.25") === "0.25" || !g025) {
+    state.currentSeriesByYm.forEach((b) => {
+      if (b.year < firstProj) histByYear.set(b.year, (histByYear.get(b.year) || 0) + b.harm);
+    });
+  } else {
+    mlCellIds.forEach((cid) => {
+      const cell = g025.cellsMeta.get(cid);
+      if (!cell) return;
+      for (const r of cell.records) {
+        if (r.year < firstProj) histByYear.set(r.year, (histByYear.get(r.year) || 0) + r.harm);
+      }
+    });
+  }
+
   const meanByYear = projYears.map((y, k) => {
     let s = 0;
     mlCellIds.forEach((cid) => {
